@@ -166,6 +166,19 @@ For full authoring guidance, use `reference/anthropic-best-practices.md`.
 | SQLAlchemy models, queries, Alembic migrations, testcontainers setup | `postgres-database` | `fastapi-service`, `ai-agents` |
 | pydantic-ai agents, tools, model registry, TestModel / FunctionModel patterns | `ai-agents` | `fastapi-service`, `postgres-database` |
 
+**Cross-skill references** — use sibling skill references only for discovery, composition, and ownership boundaries.
+A rule must be self-contained inside the skill that teaches it. If the full explanation belongs to another skill,
+move the rule there instead of writing "see `<sibling>` for the full pattern."
+
+Good references:
+- `**Related**:` lists skills that compose with this skill
+- ``For SQLAlchemy models and queries use `postgres-database`.`` in `## When to use`
+- ``See `reference/anthropic-best-practices.md` for...`` when the reference file belongs to the same skill
+
+Bad references:
+- ``TypeAdapter(list[X]) is idiomatic — see `postgres-database` for the full pattern`` inside `python-code-style`
+- A generic skill that links to a framework skill to finish explaining its own rule
+
 **Composition** — which skills load together for which task:
 
 | Task | Load alongside `python-code-style` |
@@ -211,7 +224,8 @@ Follow each step in order. Skipping steps produces the skill-drift problem that 
 
 ## Workflow: Editing an existing skill
 
-1. **Locate the rule.** Which section owns the behavior you are changing? Refuse to duplicate content into adjacent sections.
+1. **Locate the rule.** Read the complete relevant section, including table headers and neighboring examples. Which
+   section owns the behavior you are changing? If quoted text is already correct in context, explain why and make no edit.
 
 2. **Diff the intent.** If the change expands the skill's scope, re-check the ownership table. Sometimes the right edit is to move content to a different skill, not add it here.
 
@@ -235,6 +249,8 @@ These mean you are about to violate the house style. Stop and apply the named ru
 | Skip the `## When to use` section | Mandatory skeleton element |
 | Repeat a `python-code-style` rule inside a domain skill | Domain skills assume `python-code-style`; never re-state it |
 | Duplicate tooling commands across skills | Only `python-tooling` owns commands |
+| Explain a local rule by linking to a sibling skill for "the full pattern" | Cross-skill references — make the local rule self-contained or move it to the owning skill |
+| Edit a quoted line without reading its full section and table headers | Editing workflow — verify context before changing files |
 | Exceed 300 lines in `SKILL.md` without splitting | Move to `reference/<topic>.md` |
 | Write a SKILL.md without a `**Related**:` line | Mandatory skeleton element |
 | Use `your_app` / `your_project` placeholders | Use `app` + the standard substitution note |

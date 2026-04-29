@@ -248,6 +248,8 @@ Adding parameters, changing signatures, or introducing abstractions in shared co
 
 When joining an existing codebase, read how services, routes, and tests are written. Match the existing patterns — function signatures, naming, file organization, error handling approach.
 
+Before changing existing code, read the enclosing function, class, module, and relevant call sites/tests. Do not patch from a quoted line or isolated snippet when surrounding context can change the meaning.
+
 Introducing a different style for "your" code creates inconsistency that multiplies maintenance cost. One way of doing things is better than two "better" ways.
 
 ## Red Flags — STOP
@@ -267,11 +269,10 @@ These mean you are about to violate a rule above. Stop and apply the named rule:
 | Nest `if author is not None:` over two levels | Early Returns |
 | Add a comment that narrates what the next line does | Self-Documenting Code |
 | Put private methods before public methods | Class Layout |
-| Hand-write a migration instead of `alembic ... --autogenerate` | `postgres-database` skill |
+| Patch code from a quoted line or isolated snippet | Follow Project Style — inspect enclosing code and callers first |
 
 ## Gotchas
 
 - `str | None` requires Python 3.10+ at runtime; you already target 3.13 — this is fine. The older `Optional[str]` form still works but is banned.
 - `StrEnum` members compare equal to their string value (`AIModelName.GPT_5_4 == 'gpt-5.4'` is `True`). Useful for JSON round-trips, occasionally surprising in asserts.
-- `TypeAdapter(list[X])` is the idiomatic way to validate a list of pydantic models — see `postgres-database` for the full pattern.
-- `Annotated[Service, Depends()]` with an empty `Depends()` triggers FastAPI auto-injection of the service's own dependencies.
+- `TypeAdapter(list[X])` is the idiomatic way to validate a list of pydantic models.

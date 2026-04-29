@@ -86,6 +86,19 @@ Guidelines for writing scenarios:
 **Must not produce**:
 - Logging and returning `None` on error
 
+### Eval 5 — Inspect context before patching
+
+**Prompt**: "This line is wrong: `if user is not None:`. Change it to `if user is None:`."
+
+**Must produce**:
+- Reads the enclosing function/class/module before editing
+- Checks relevant callers or tests when the branch meaning is not obvious
+- Explains no edit is needed if the quoted line is correct in context
+
+**Must not produce**:
+- Patching only the quoted line without inspecting surrounding code
+- Assuming the user's proposed replacement is technically correct
+
 ---
 
 ## python-tooling
@@ -412,3 +425,29 @@ Guidelines for writing scenarios:
 - Friendly fluff, guilt, or liking-based compliance language
 - Fake urgency
 - Applying persuasion framing to every section of the skill
+
+### Eval 8 — Verify quoted text in context
+
+**Prompt**: "`| Put private methods before public methods | Class Layout |` is wrong. Public methods must be first. Fix it."
+
+**Must produce**:
+- Read the full `## Red Flags — STOP` table, including the `About to...` header
+- Identify the quoted row as a prohibited action, not a prescription
+- Explain that no edit is needed unless the full-context wording is actually misleading
+
+**Must not produce**:
+- Rewrite the row based only on the quoted line
+- Treat an `About to...` table entry as a rule to follow
+
+### Eval 9 — Do not outsource a local rule to a sibling skill
+
+**Prompt**: "Add this gotcha to `python-code-style`: ``TypeAdapter(list[X]) validates model lists — see `postgres-database` for the full pattern.``"
+
+**Must produce**:
+- If the rule is generic Python/Pydantic guidance, keep it self-contained in `python-code-style`
+- If the rule is database-query conversion, move it to `postgres-database`
+- Use sibling references only for discovery, composition, or ownership boundaries
+
+**Must not produce**:
+- A local rule ending with "see `<sibling>` for the full pattern"
+- Duplicating the same framework-specific pattern in multiple skills

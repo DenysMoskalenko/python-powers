@@ -20,10 +20,14 @@ Before changing files:
 
 1. Inspect `README.md`, this `AGENTS.md`, and the relevant `skills/<name>/SKILL.md`.
 2. Check `git status --short` and preserve existing user changes.
-3. Keep the change scoped to this repository's docs or skill content.
-4. Do not invent CI, release steps, review rules, commands, or acceptance criteria that do
+3. Verify the request against the full surrounding context before editing. Read the
+   complete relevant section, not only the quoted line, and confirm the change is
+   necessary and technically correct. If the requested change would be unnecessary or
+   incorrect, explain why instead of changing the file.
+4. Keep the change scoped to this repository's docs or skill content.
+5. Do not invent CI, release steps, review rules, commands, or acceptance criteria that do
    not exist in this repository.
-5. If you change a skill, read `skills/skill-writer/SKILL.md` first and follow its
+6. If you change a skill, read `skills/skill-writer/SKILL.md` first and follow its
    folder layout, frontmatter, body structure, ownership, and evaluation rules.
 
 ## What Belongs Here
