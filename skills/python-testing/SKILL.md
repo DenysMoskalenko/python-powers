@@ -1,11 +1,6 @@
 ---
 name: python-testing
-description: >
-  Use when writing, reviewing, or planning tests for a FastAPI service —
-  API-level test philosophy, polyfactory data generation, test organization,
-  helper patterns, assertion patterns, FastAPI dependency overrides, and
-  coverage requirements. For PostgreSQL container/fixture setup see
-  `postgres-database`; for pydantic-ai test mocking see `ai-agents`.
+description: Use when writing, reviewing, or planning tests for a FastAPI service — API-level test philosophy, polyfactory data generation, test organization, helper patterns, assertion patterns, FastAPI dependency overrides, and coverage requirements. For PostgreSQL container/fixture setup see `postgres-database`; for pydantic-ai test mocking see `ai-agents`.
 ---
 
 # Python FastAPI Testing Patterns
@@ -16,15 +11,6 @@ Testing patterns for FastAPI services. Scoped to HTTP/API testing, shared test f
 > Examples use `app/` as the top-level package. Substitute your package name if different.
 
 **Related**: `python-code-style`, `python-tooling`, `postgres-database`, `ai-agents`.
-
-## When to use
-
-Load this skill when:
-- Writing or reviewing tests for HTTP endpoints
-- Setting up `conftest.py`, factories, or dependency-override utilities
-- Debugging test isolation or fixture-scope issues
-
-For PostgreSQL container setup and DB test fixtures use `postgres-database`. For pydantic-ai agent test mocking use `ai-agents`.
 
 ## Test Philosophy
 
@@ -110,7 +96,6 @@ class AuthorCreateOverrides(TypedDict, total=False):
 async def create_test_author(session: AsyncSession, **overrides: Unpack[AuthorCreateOverrides]) -> Author:
     payload = AuthorCreateFactory.build(factory_use_construct=False, **overrides)
     author = await AuthorService(session).create_author(payload)
-    await session.flush()
     return author
 ```
 

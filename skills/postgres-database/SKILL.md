@@ -1,10 +1,6 @@
 ---
 name: postgres-database
-description: >
-  Use when working with PostgreSQL via SQLAlchemy 2.0 async and Alembic —
-  defining models, writing service queries (CRUD, pagination, filtering),
-  generating or debugging migrations, or setting up testcontainers-based
-  database isolation in tests.
+description: Use when working with PostgreSQL via SQLAlchemy 2.0 async and Alembic — defining models, writing service queries (CRUD, pagination, filtering), generating or debugging migrations, or setting up testcontainers-based database isolation in tests.
 ---
 
 # PostgreSQL Database Patterns
@@ -15,14 +11,6 @@ SQLAlchemy 2.0 async patterns for PostgreSQL. Services own queries directly — 
 > Examples use `app/` as the top-level package. Substitute your package name if different.
 
 **Related**: `python-code-style`, `python-testing`, `python-tooling`, `fastapi-service`.
-
-## When to use
-
-Load this skill when:
-- Adding a new SQLAlchemy model
-- Writing a service query (CRUD, pagination, filtering)
-- Generating or debugging an Alembic migration
-- Setting up testcontainers-backed database fixtures
 
 For HTTP routes and Pydantic schemas use `fastapi-service`. For shared test fixtures and assertion patterns use `python-testing`.
 
@@ -127,7 +115,10 @@ class AuthorModel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     books: Mapped[list['BookModel']] = relationship(
-        back_populates='author', cascade='all, delete-orphan', passive_deletes=True,
+        back_populates='author',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+        lazy='raise',
     )
 ```
 
@@ -137,6 +128,7 @@ Key rules:
 - Explicit `String(N)` lengths matching schema `max_length`
 - `UniqueConstraint` in `__table_args__` with descriptive `name` (Alembic needs stable names)
 - `TYPE_CHECKING` guard for forward references in relationships
+- Every `relationship(...)` declares `lazy='raise'` — no implicit loading; see [Loading relationships](#loading-relationships)
 
 ### Primary key choice
 
@@ -181,27 +173,79 @@ class AuthorService:
         return Author.model_validate(author)
 
     async def create_author(self, creation: AuthorCreate) -> Author:
-        async with self._session.begin_nested():
-            await self._validate_author_unique(creation)
-            query = (
-                insert(AuthorModel)
-                .values(first_name=creation.first_name, last_name=creation.last_name)
-                .returning(AuthorModel)
-            )
-            author = await self._session.scalar(query)
+        await self._validate_author_unique(creation)
+        query = (
+            insert(AuthorModel)
+            .values(first_name=creation.first_name, last_name=creation.last_name)
+            .returning(AuthorModel)
+        )
+        author = await self._session.scalar(query)
         return Author.model_validate(author)
 
     async def delete_author_by_id(self, author_id: int) -> None:
-        async with self._session.begin_nested():
-            query = delete(AuthorModel).filter(AuthorModel.id == author_id).returning(AuthorModel.id)
-            deleted_author_id = await self._session.scalar(query)
-            if deleted_author_id is None:
-                _logger.info('Author with id=%s not found but requested for deletion', author_id)
+        query = delete(AuthorModel).filter(AuthorModel.id == author_id).returning(AuthorModel.id)
+        deleted_author_id = await self._session.scalar(query)
+        if deleted_author_id is None:
+            _logger.info('Author with id=%s not found but requested for deletion', author_id)
 ```
 
-- `begin_nested()` for all write operations — provides savepoint for rollback in tests
+- Request-scoped write methods that receive `get_session` do not call `commit()` or `rollback()`
+- `open_db_session()` or the caller-owned session defines the transaction boundary
+- Do not wrap single-statement CRUD writes in `begin_nested()`. Reach for it only when you need partial rollback inside a larger transaction — bulk import that should continue past a per-row failure, or catching `IntegrityError` and keeping the outer transaction usable. For test isolation against accidental `session.commit()` calls, use `join_transaction_mode='create_savepoint'` in the test session fixture, not service-level savepoints.
 - `insert(...).returning(Model)` — single query for insert+read
 - Domain exceptions (`NotFoundError`) — never `HTTPException` in services
+
+### Loading relationships
+
+**No hidden loads.** Every relationship attribute the service or response touches must be loaded explicitly in the query that fetches the parent, via `.options(joinedload(...))` or `.options(selectinload(...))`. Lazy loading is forbidden — all `relationship(...)` declarations set `lazy='raise'` so a missed eager-load fails with `InvalidRequestError` at the call site instead of leaking N+1 queries or surprising the next reader.
+
+Pick the loader by the **relationship shape** and **how many parents** you load:
+
+| Relationship | Loading | Use |
+|---|---|---|
+| many-to-one / one-to-one | single fetch or list | `joinedload` |
+| one-to-many / many-to-many | single parent | `joinedload` (call `.unique()`) or `selectinload` |
+| one-to-many / many-to-many | multiple parents (lists, paginated) | `selectinload` |
+
+**Single fetch — `joinedload`** (one round-trip via LEFT OUTER JOIN, ideal for to-one):
+
+```python
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload
+
+
+async def get_book_by_id(self, book_id: int) -> Book:
+    query = (
+        select(BookModel)
+        .options(joinedload(BookModel.author))
+        .filter(BookModel.id == book_id)
+    )
+    book = await self._session.scalar(query)
+    if book is None:
+        raise NotFoundError(f'Book(id={book_id}) not found')
+    return Book.model_validate(book)
+```
+
+**Paginated list with a collection — `selectinload`** (parent SELECT + one `WHERE id IN (...)` SELECT per loaded relationship; no row duplication, no subquery wrap on `LIMIT`):
+
+```python
+from sqlalchemy.orm import selectinload
+
+
+async def list_books(
+    self, filters: BookListFilters, pagination_params: Params,
+) -> Page[Book]:
+    query = (
+        select(BookModel)
+        .options(selectinload(BookModel.tags))  # M2M — selectinload, never joinedload
+        .options(joinedload(BookModel.author))  # to-one — joinedload is fine on lists
+    )
+    query = self._apply_filters(query, filters)
+    return await apaginate(
+        self._session, query, params=pagination_params,
+        transformer=lambda books: self.BOOK_LIST_ADAPTER.validate_python(books, from_attributes=True),
+    )
+```
 
 ### Pagination
 
@@ -270,18 +314,22 @@ These mean the database boundary is drifting. Stop and apply the named rule:
 | Add `Column(...)` instead of `Mapped[]` / `mapped_column()` | Models — use SQLAlchemy 2.0 style |
 | Leave `String` length implicit | Models — match schema `max_length` with explicit `String(N)` |
 | Add unnamed constraints | Models — every constraint needs a stable Alembic name |
+| Declare `relationship(...)` without `lazy='raise'` | Loading relationships — every relationship is opt-in per query; no implicit loads |
+| Touch a relationship attribute that the originating query did not eager-load | Loading relationships — add `.options(joinedload(...))` (to-one) or `.options(selectinload(...))` (collection) to the query, do not work around the error |
+| Use `joinedload` on a collection (one-to-many / many-to-many) in a paginated list query | Loading relationships — use `selectinload` for collections on multiple parents |
+| Forget `Result.unique()` / `scalars().unique()` after `joinedload(collection)` | Loading relationships — joinedload duplicates parent rows on collections; deduplicate or switch to `selectinload` |
+| Soften `lazy='raise'` to `'select'` / `'raise_on_sql'` to make an error go away | Loading relationships — the rule stands; fix the originating query, do not weaken the model |
 | Hand-write a migration without autogenerate | Migrations — run `make migration MSG="..."` first |
 | Add a repository layer between services and SQLAlchemy | Usage — services own queries directly |
 | Paginate with manual `limit` / `offset` math | Pagination — use `apaginate()` with a transformer |
 | Use `==` for requested case-insensitive text search | Filtering — use `icontains` / `ilike` |
-| Skip `begin_nested()` around writes | Service Query Patterns — writes need nested transactions for test rollback |
+| Move request-scoped `commit()` / `rollback()` from the session provider into CRUD service methods | Engine and Session Factory — keep request transaction ownership in `open_db_session()` |
+| Wrap a single-statement CRUD write in `begin_nested()` / SAVEPOINT for "safety" or "test rollback" | Service Query Patterns — `begin_nested()` is for partial rollback inside a larger transaction; for test isolation use `join_transaction_mode='create_savepoint'` in the fixture |
 | Replace Postgres tests with SQLite or mocks | Testing — use testcontainers; see `reference/testing.md` |
 
 ## Gotchas
 
-- `begin_nested()` is required for write operations — without it, test rollback doesn't isolate properly
 - Always include `session` fixture in test signatures even if the test doesn't query the DB directly — it sets up transaction rollback
-- Call `await session.flush()` in test helpers after service calls to make data visible within the same transaction
 - All constraints need explicit `name` in `__table_args__` — Alembic needs stable names across environments
 - `get_settings().DATABASE_URL` returns a `PostgresDsn` object — call `.unicode_string()` when a plain string is needed
-- `expire_on_commit=False` on the session factory prevents lazy-load errors after commit
+- `expire_on_commit=False` on the session factory prevents attribute-expiration errors after commit

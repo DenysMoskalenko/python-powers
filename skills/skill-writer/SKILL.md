@@ -1,10 +1,6 @@
 ---
 name: skill-writer
-description: >
-  Use when creating, editing, splitting, or reviewing `skills/<name>/SKILL.md`
-  files in this repository, or when adding evaluation scenarios for those
-  skills. Applies only to this repository's `skills/` tree; for foreign skill
-  systems use that system's own authoring guide.
+description: Use when creating, editing, splitting, or reviewing `skills/<name>/SKILL.md` files in this repository, or when adding evaluation scenarios for those skills. Applies only to this repository's `skills/` tree; for foreign skill systems use that system's own authoring guide.
 ---
 
 # Skill Writer (This Repository Only)
@@ -18,17 +14,12 @@ Meta-skill for authoring skills in this repository's `skills/` folder. Captures 
 
 ## When to use
 
-Load this skill when:
-- Creating a new `skills/<name>/SKILL.md`
-- Editing or extending any existing skill under `skills/`
-- Splitting a skill into `SKILL.md` + `reference/*.md`
-- Reviewing a skill for consistency before committing
-- Adding or updating evaluation scenarios
-
-**Do not load** for:
+This skill is meta and prone to over-application. **Do not load** for:
 - Writing Python application code — use the domain skills (`python-code-style`, `fastapi-service`, etc.)
 - Authoring skills outside `skills/` (different conventions apply)
 - Non-skill documentation (README, AGENTS.md, plain notes)
+
+> Triggers live in the frontmatter `description`. This section exists only because the meta-skill needs explicit "do not load" guidance — most skills should not have a `## When to use` section at all (see [Body skeleton](#body-skeleton) below).
 
 ## House style
 
@@ -49,16 +40,13 @@ Skill name: lowercase, hyphens only, descriptive (`python-testing`, not `tests`)
 ```yaml
 ---
 name: <kebab-case-name>
-description: >
-  Use when <trigger 1>, <trigger 2>, or <trigger 3> — <concrete scope items
-  separated by commas, written as keyword bait an agent would search for>.
-  [Optional] For <adjacent topic> see `<sibling-skill>`.
+description: Use when <trigger 1>, <trigger 2>, or <trigger 3> — <concrete scope items separated by commas, written as keyword bait an agent would search for>. [Optional] For <adjacent topic> see `<sibling-skill>`.
 ---
 ```
 
 Rules:
 - `name` — lowercase + hyphens, matches folder name
-- `description` — folded YAML scalar (`>`), 30-55 words, well under the 1024-char ceiling
+- `description` — single-line YAML scalar, 30-55 words, well under the 1024-char ceiling
 - Description MUST start with "Use when…" and state **triggers**, not a workflow recipe
 - Description in **third person** only ("Use when…", not "I help you…")
 - Disambiguation clause is **optional** and earns its place only when:
@@ -83,14 +71,12 @@ Every `SKILL.md` follows this order. Sections in **bold** are mandatory.
 
 **Related**: `<skill1>`, `<skill2>`, `<skill3>`.
 
-## When to use        <!-- MANDATORY -->
+[Optional sibling pointer line:] For <adjacent topic> use `<sibling-skill>`. For <other adjacent topic> use `<other-sibling>`.
 
-Load this skill when:
-- <specific, unambiguous trigger 1>
-- <trigger 2>
-- <trigger 3>
+## When to use        <!-- OPTIONAL -- include ONLY if it adds value the description cannot -->
 
-[Optional sibling pointer:] For <adjacent topic> use `<sibling-skill>`. For <other adjacent topic> use `<other-sibling>`.
+<Use ONLY for "Do not load for:" exclusions, or for sub-triggers too granular for the
+30-55-word description budget. NEVER restate the description as a "Load this skill when:" bullet list -- the loader only sees the description, so duplicating it costs tokens on every load and adds nothing.>
 
 ## <domain sections>  <!-- MANDATORY: at least 2 -->
 
@@ -150,6 +136,7 @@ Good and bad descriptions — most author mistakes happen here.
 | `Use for testing stuff.` | Vague | Include concrete terms agents search for |
 | `Does not cover general Python style...` on `postgres-database` | Dead-weight exclusion | Drop exclusions the name already excludes |
 | `Use when writing tests. Apply when updating tests.` | Duplicate trigger | Merge into one sentence |
+| `## When to use` body section that bullets the same triggers as the description | Loader only sees the description; duplicate is paid every load | Drop the section, or keep it only for "Do not load for" exclusions or sub-triggers too granular for the description |
 
 For full authoring guidance, use `reference/anthropic-best-practices.md`.
 
@@ -210,7 +197,7 @@ Follow each step in order. Skipping steps produces the skill-drift problem that 
 
 3. **Draft the description.** 30-55 words. Start with "Use when…". State triggers, not workflow. Add a disambiguation clause ONLY when a sibling skill could plausibly be confused (positive `For X see \`sibling\`` pointer) or this skill is the broadest in its area and prone to over-application ("Does not cover X" exclusion). If the name + topics already exclude a topic, do not list it. Iterate until no recipe leaks into the triggers and no token is wasted.
 
-4. **Draft the body.** Follow the skeleton exactly. Keep one excellent code example per pattern. If any single section exceeds 200 lines, plan to move it to `reference/<topic>.md` (step 6).
+4. **Draft the body.** Follow the skeleton exactly. Keep one excellent code example per pattern. Do NOT add a `## When to use` section unless it carries information the description cannot — explicit "Do not load for:" exclusions, or sub-triggers too granular for the description budget. A one-line sibling pointer ("For X use `<sibling>`") goes under the overview, not its own section. If any single section exceeds 200 lines, plan to move it to `reference/<topic>.md` (step 6).
 
 5. **Write Red Flags + Gotchas.** For discipline/domain skills, build a rationalization table (`About to X` → `Apply rule Y`). Think specifically: what would an agent DO wrong without this skill? Use those exact mistakes as row entries.
 
@@ -246,7 +233,7 @@ These mean you are about to violate the house style. Stop and apply the named ru
 | Pair "Use when…" with "Apply when…" that restates the same triggers | Pick one; merge into a single sentence |
 | Add a `compatibility:` frontmatter field | Put `> Requires ...` in the body instead |
 | Write a first-person description ("I help you…") | Third person only |
-| Skip the `## When to use` section | Mandatory skeleton element |
+| Add a `## When to use` section that paraphrases the description in bullets | The loader only sees the description; restating it in the body wastes tokens on every load. Drop the section, or keep it only for "Do not load for" exclusions or sub-triggers the description cannot fit |
 | Repeat a `python-code-style` rule inside a domain skill | Domain skills assume `python-code-style`; never re-state it |
 | Duplicate tooling commands across skills | Only `python-tooling` owns commands |
 | Explain a local rule by linking to a sibling skill for "the full pattern" | Cross-skill references — make the local rule self-contained or move it to the owning skill |
@@ -278,6 +265,9 @@ A long `SKILL.md` slows every load. Fix: main file teaches patterns + workflow; 
 
 **6. Inconsistent terminology within a skill.**
 Mixing "endpoint", "route", and "path" in the same skill confuses the agent. Fix: pick one term per concept and search/replace.
+
+**7. `## When to use` body section that restates the description.**
+The loader picks the skill from the frontmatter `description` alone; the body is read only after the skill has already been chosen. A `## When to use` block that bullets the same triggers in different words is paid on every load and adds nothing. Fix: drop the section. Keep it only when it carries information the description cannot — explicit "Do not load for:" exclusions, or sub-triggers too granular for the 30-55-word description budget. A one-line sibling pointer ("For X use `<sibling>`") belongs under the overview / `**Related**:` line, not its own section.
 
 ## Gotchas
 

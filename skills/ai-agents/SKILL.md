@@ -1,10 +1,6 @@
 ---
 name: ai-agents
-description: >
-  Use when building, integrating, or testing pydantic-ai agents inside a
-  FastAPI service — defining the Agent, typed dependencies, tools, system
-  prompts, model registry, agent-as-FastAPI-dependency wiring, or agent test
-  fixtures (TestModel, FunctionModel, provider error mapping).
+description: Use when building, integrating, or testing pydantic-ai agents inside a FastAPI service — defining the Agent, typed dependencies, tools, system prompts, model registry, agent-as-FastAPI-dependency wiring, or agent test fixtures (TestModel, FunctionModel, provider error mapping).
 ---
 
 # AI Agent Patterns
@@ -15,14 +11,6 @@ Patterns for building pydantic-ai agents integrated into FastAPI services.
 > Examples use `app/` as the top-level package (the reference project's convention). Substitute your package name if different.
 
 **Related**: `python-code-style`, `fastapi-service`, `python-testing`.
-
-## When to use
-
-Load this skill when:
-- Defining a new pydantic-ai agent and its tools
-- Wiring an agent as a FastAPI dependency
-- Writing a service that delegates to an agent
-- Writing tests for agent behavior or provider errors
 
 For generic FastAPI route/service patterns use `fastapi-service`. For database queries use `postgres-database`. For shared test infrastructure use `python-testing`.
 

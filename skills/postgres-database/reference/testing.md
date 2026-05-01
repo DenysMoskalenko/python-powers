@@ -82,7 +82,11 @@ async def session(app: FastAPI, _engine: AsyncEngine) -> AsyncIterable[AsyncSess
     connection = await _engine.connect()
     trans = await connection.begin()
 
-    session_factory = async_sessionmaker(connection, expire_on_commit=False)
+    session_factory = async_sessionmaker(
+        bind=connection,
+        expire_on_commit=False,
+        join_transaction_mode='create_savepoint',
+    )
     session = session_factory()
 
     override_dependency(app, get_session, lambda: session)
@@ -90,12 +94,14 @@ async def session(app: FastAPI, _engine: AsyncEngine) -> AsyncIterable[AsyncSess
     try:
         yield session
     finally:
-        await trans.rollback()
         await session.close()
+        await trans.rollback()
         await connection.close()
 ```
 
 The `session` fixture overrides `get_session` so the app uses the test session. After the test, the transaction rolls back and the database is clean.
+
+`join_transaction_mode='create_savepoint'` keeps the external transaction isolated even if application code calls `session.commit()`.
 
 ## Startup migration disabling
 

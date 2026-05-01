@@ -1,10 +1,6 @@
 ---
 name: python-tooling
-description: >
-  Use when bootstrapping or changing Python development tooling — uv dependency
-  management, adding or removing dependencies, ruff formatting/linting, ty type
-  checking, pytest configuration in `pyproject.toml`, pre-commit hooks,
-  optional Makefile wrappers, or CI quality jobs.
+description: Use when bootstrapping or changing Python development tooling — uv dependency management, adding or removing dependencies, ruff formatting/linting, ty type checking, pytest configuration in `pyproject.toml`, pre-commit hooks, optional Makefile wrappers, or CI quality jobs.
 ---
 
 # Python Tooling
@@ -14,15 +10,6 @@ Recommended baseline for modern Python projects. Prefer `pyproject.toml` for too
 > Requires Python 3.13+, uv, ruff, ty.
 
 **Related**: `python-code-style`, `python-testing`.
-
-## When to use
-
-Load this skill when:
-- Setting up a new Python project or CI pipeline
-- Modifying `pyproject.toml`, `.pre-commit-config.yaml`, or `Makefile`
-- Adding or removing a dependency
-- Investigating why a tool (ruff, ty, pytest) behaves unexpectedly
-- Writing or updating CI jobs for lint/typecheck/test
 
 For code style rules use `python-code-style`. For test layout and helpers use `python-testing`.
 

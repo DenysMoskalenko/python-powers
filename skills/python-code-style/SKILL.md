@@ -1,25 +1,16 @@
 ---
 name: python-code-style
-description: >
-  Use when writing, reviewing, or refactoring Python 3.13+ code — type hints,
-  code density, model-first data design, naming, dependency injection, early
-  returns, fail-fast discipline, and architectural principles (KISS, YAGNI,
-  SRP, DRY). Does not cover framework patterns, tool configuration, or test
-  layout — those are owned by the matching domain skill.
+description: Use when writing, reviewing, or refactoring Python 3.13+ code — type hints, code density, model-first data design, naming, dependency injection, early returns, fail-fast discipline, and architectural principles (KISS, YAGNI, SRP, DRY). Does not cover framework patterns, tool configuration, or test layout — those are owned by the matching domain skill.
 ---
 
 # Python Code Style
 
-Rules for writing production-quality Python. Every rule here reflects a deliberate choice — follow them unless you have a specific, stated reason not to.
+Rules for writing production-quality Python. Every rule here reflects a deliberate choice — follow them unless you have a specific, stated reason not to. Prerequisite for the domain skills (`fastapi-service`, `postgres-database`, `ai-agents`), which assume these rules are in effect and do not re-state them.
 
 > Requires Python 3.13+.
 > Examples use `app/` as the top-level package. Substitute your package name if different.
 
 **Related**: `python-tooling`, `python-testing`, `fastapi-service`, `postgres-database`, `ai-agents`.
-
-## When to use
-
-Load this skill for any Python edit. It's a prerequisite for the domain skills (`fastapi-service`, `postgres-database`, `ai-agents`), which assume these rules are in effect and do not re-state them.
 
 ## Type Hints
 
@@ -173,13 +164,13 @@ class AuthorService:
 Prefer early returns over nested conditions. Exit the function as soon as you know the answer.
 
 ```python
-async def get_author_by_id(self, author_id: int) -> Author:
+async def get_author_by_id(self, author_id: int) -> Author:  # Good
     author = await self._session.scalar(query)
     if author is None:
         raise NotFoundError(f'Author(id={author_id}) not found')
     return Author.model_validate(author)
 
-async def get_author_by_id(self, author_id: int) -> Author:
+async def get_author_by_id(self, author_id: int) -> Author:  # Bad
     author = await self._session.scalar(query)
     if author is not None:
         return Author.model_validate(author)

@@ -1,11 +1,6 @@
 ---
 name: fastapi-service
-description: >
-  Use when building or modifying a FastAPI service without a repository
-  layer — adding routes, services, Pydantic schemas, exception handlers,
-  pydantic-settings configuration, dependency injection, or project
-  structure. For SQLAlchemy models and migrations see `postgres-database`;
-  for pydantic-ai agents see `ai-agents`.
+description: Use when building or modifying a FastAPI service without a repository layer — adding routes, services, Pydantic schemas, exception handlers, pydantic-settings configuration, dependency injection, or project structure. For SQLAlchemy models and migrations see `postgres-database`; for pydantic-ai agents see `ai-agents`.
 ---
 
 # FastAPI Service Patterns
@@ -16,16 +11,6 @@ Patterns for building FastAPI services where services own business logic directl
 > Examples use `app/` as the top-level package. Substitute your package name if different.
 
 **Related**: `python-code-style`, `python-testing`, `postgres-database`, `ai-agents`.
-
-## When to use
-
-Load this skill when:
-- Adding a new domain entity with routes, service, and schemas
-- Wiring a new FastAPI dependency
-- Designing request/response schemas or an exception handler
-- Reviewing a route that leaks business logic or HTTP details
-
-For SQLAlchemy models and queries use `postgres-database`. For pydantic-ai agents use `ai-agents`.
 
 ## Architecture
 
@@ -125,10 +110,9 @@ class AuthorService:
         return Author.model_validate(author)
 
     async def create_author(self, creation: AuthorCreate) -> Author:
-        async with self._session.begin_nested():
-            await self._validate_author_unique(creation)
-            query = insert(AuthorModel).values(**creation.model_dump()).returning(AuthorModel)
-            author = await self._session.scalar(query)
+        await self._validate_author_unique(creation)
+        query = insert(AuthorModel).values(**creation.model_dump()).returning(AuthorModel)
+        author = await self._session.scalar(query)
         return Author.model_validate(author)
 
     async def _validate_author_unique(self, creation: AuthorCreate) -> None:
@@ -138,6 +122,7 @@ class AuthorService:
 Key patterns:
 - Domain exceptions (`NotFoundError`, `AlreadyExistError`) — never `HTTPException` in services
 - Public methods first, private methods after (class interface at the top)
+- Request-scoped services that receive `get_session` do not call `commit()` or `rollback()`; the session provider owns that transaction boundary
 - Logging for non-critical situations (e.g., delete of non-existent entity)
 
 ## Schemas

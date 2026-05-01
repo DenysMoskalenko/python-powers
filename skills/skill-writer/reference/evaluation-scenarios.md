@@ -214,9 +214,11 @@ Guidelines for writing scenarios:
 **Must produce**:
 - Public methods first, private after
 - `session: Annotated[AsyncSession, Depends(get_session)]` constructor
-- Uses `begin_nested()` around writes
+- Simple CRUD writes use the injected session directly
 - Raises domain exceptions
-- `flush()` so returned data is visible inside the outer transaction
+
+**Must not produce**:
+- `await self._session.commit()` inside this request-scoped service
 
 ---
 
@@ -263,6 +265,62 @@ Guidelines for writing scenarios:
 **Must not produce**:
 - `LIMIT/OFFSET` math by hand
 - Bare `==` on text fields when case-insensitive matching was asked
+
+### Eval 4 — CRUD write transaction boundary
+
+**Prompt**: "Write `AuthorService.create_author` for a normal POST endpoint backed by SQLAlchemy."
+
+**Must produce**:
+- Validate domain invariants, execute `insert(...).returning(AuthorModel)`, and return the response schema
+- Let `open_db_session()` or the caller-owned session handle commit/rollback
+
+**Must not produce**:
+- `session.commit()` or `session.rollback()` inside this request-scoped CRUD service
+- `async with self._session.begin_nested():` wrapping the single-statement write
+- Justification framing `begin_nested()` as needed "for test rollback" or "for safety"
+
+### Eval 5 — Paginated list with M2M collection
+
+**Prompt**: "Add a paginated `list_books` endpoint that returns each book with its tags (many-to-many) and its author (many-to-one)."
+
+**Must produce**:
+- `select(BookModel)` with `.options(selectinload(BookModel.tags))` for the M2M collection
+- `.options(joinedload(BookModel.author))` for the to-one
+- Pagination via `apaginate(...)` with a `TypeAdapter` transformer
+- Note that `lazy='raise'` would otherwise raise on tag/author access during serialization
+
+**Must not produce**:
+- `joinedload(BookModel.tags)` on the M2M (cartesian product / subquery wrap on LIMIT)
+- Any reliance on lazy access (no `for tag in book.tags` outside an explicitly loaded query)
+- `subqueryload(...)` instead of `selectinload(...)`
+
+### Eval 6 — Diagnose `lazy='raise'` error
+
+**Prompt**: "I'm getting `sqlalchemy.exc.InvalidRequestError: 'BookModel.tags' is not available due to lazy='raise'` when serializing a book in the response."
+
+**Must produce**:
+- Diagnose as a missing eager-load in the originating query
+- Add `.options(selectinload(BookModel.tags))` to the `select(BookModel)` that fetched the book
+- Confirm the rule: every relationship access requires explicit loading at query time
+
+**Must not produce**:
+- Suggestion to change `lazy='raise'` to `'select'` / `'raise_on_sql'` / `'joined'` / `'selectin'` on the model
+- Workarounds that keep the original query unchanged
+- Catching the `InvalidRequestError` and falling back
+
+### Eval 7 — Refuse weakening the model default
+
+**Prompt**: "Can we just drop `lazy='raise'` from the relationships? It's annoying to add `.options(...)` every time."
+
+**Must produce**:
+- Refusal grounded in the no-hidden-loads rule
+- Restate that `lazy='raise'` exists to surface missing loads at the query site instead of leaking N+1 / `MissingGreenlet` to runtime
+- Offer the correct path: keep `lazy='raise'`, add `.options(joinedload(...))` / `.options(selectinload(...))` per query
+
+**Must not produce**:
+- Approval of removing or weakening `lazy='raise'`
+- Suggestion to set a class-wide eager loader (`lazy='selectin'` / `lazy='joined'`) as the default
+- Framing the rule as optional or per-team preference
 
 ---
 
@@ -451,3 +509,40 @@ Guidelines for writing scenarios:
 **Must not produce**:
 - A local rule ending with "see `<sibling>` for the full pattern"
 - Duplicating the same framework-specific pattern in multiple skills
+
+### Eval 10 — Drop a redundant `## When to use` section
+
+**Prompt**: "I'm adding a new `redis-cache` skill. Here's my draft:
+```
+---
+name: redis-cache
+description: Use when adding or modifying Redis-based caching — connection setup, cache key design, TTL policies, invalidation, or testing cache layers.
+---
+
+# Redis Cache Patterns
+
+...overview...
+
+## When to use
+
+Load this skill when:
+- Adding or modifying Redis caching
+- Designing cache keys or TTL policies
+- Setting up cache invalidation
+- Testing cache layers
+
+## Connection setup
+...
+```
+Review it."
+
+**Must produce**:
+- Flag the `## When to use` block as redundant — it paraphrases the description in bullets and the loader only sees the description
+- Recommend dropping the section entirely (or keeping only "Do not load for:" exclusions / sub-triggers the description cannot fit)
+- Note that a one-line sibling pointer ("For X use `<sibling>`") belongs under the overview, not its own section
+- Keep the description as the single trigger surface
+
+**Must not produce**:
+- Approval of the `## When to use` bullet list as-is
+- A suggestion to "make the When to use section more detailed" or "add more triggers there"
+- Treating `## When to use` as a mandatory skeleton element
