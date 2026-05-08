@@ -1,0 +1,53 @@
+{
+  "name": "python-powers",
+  "version": "0.1.0",
+  "description": "Reusable engineering skills for AI-assisted Python development.",
+  "author": {
+    "name": "Denys Moskalenko",
+    "email": "denysmoskalenko11@gmail.com",
+    "url": "https://github.com/DenysMoskalenko"
+  },
+  "homepage": "https://github.com/DenysMoskalenko/python-powers",
+  "repository": "https://github.com/DenysMoskalenko/python-powers",
+  "license": "Apache-2.0",
+  "keywords": [
+    "python",
+    "backend",
+    "fastapi",
+    "database",
+    "postgresql",
+    "sqlalchemy",
+    "testing",
+    "pytest",
+    "tooling",
+    "uv",
+    "ruff",
+    "ty",
+    "ai-agents",
+    "llm-agents",
+    "pydantic-ai"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AI Python Powers",
+    "shortDescription": "Reusable Python, FastAPI, PostgreSQL, testing, and AI-agent engineering skills",
+    "longDescription": "AI Python Powers gives Codex focused engineering guidance for Python 3.13+ services, FastAPI, PostgreSQL, pytest, uv, ruff, ty, and pydantic-ai agents.",
+    "developerName": "Denys Moskalenko",
+    "category": "Coding",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/DenysMoskalenko/python-powers",
+    "privacyPolicyURL": "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
+    "termsOfServiceURL": "https://docs.github.com/en/site-policy/github-terms/github-terms-of-service",
+    "defaultPrompt": [
+      "Use Python Powers for this FastAPI change.",
+      "Review this service against Python Powers.",
+      "Add tests using the Python Powers patterns."
+    ],
+    "brandColor": "#0F766E",
+    "screenshots": []
+  }
+}

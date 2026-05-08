@@ -70,6 +70,10 @@ When adding a new skill:
 - Add a folder at `skills/<kebab-name>/SKILL.md`; use `reference/` only for supporting
   material that would otherwise make the main file too long.
 - Update related-skill cross-references where they materially help discovery.
+- Inspect plugin manifests (`.codex-plugin/plugin.json`, `.cursor-plugin/plugin.json`)
+  and update their discoverability metadata when the skill changes the plugin's advertised
+  scope. Keep `skills` paths valid, update `keywords`, Cursor `tags`, summaries, and
+  starter prompts only when they should help users find or understand the plugin.
 
 ## Validation
 

@@ -39,6 +39,40 @@ Typical combinations:
 | Change linting, typing, dependencies, or test commands | `python-tooling` |
 | Edit one of this repository's skills | `skill-writer` plus the skill being changed |
 
+## Install As A Codex Plugin
+
+This repository is importable as a Codex plugin from GitHub. The plugin manifest lives
+at [`.codex-plugin/plugin.json`](.codex-plugin/plugin.json) and points Codex at the
+root [`skills/`](skills/) directory.
+
+In Codex, import this repository URL:
+
+```text
+https://github.com/DenysMoskalenko/python-powers
+```
+
+After installation, enable **AI Python Powers** and use the skills listed above.
+
+## Install As A Cursor Plugin
+
+This repository is also importable as a Cursor plugin. The Cursor plugin manifest
+lives at [`.cursor-plugin/plugin.json`](.cursor-plugin/plugin.json) and points Cursor
+at the root [`skills/`](skills/) directory.
+
+In a Cursor Agent chat, run:
+
+```text
+/add-plugin python-powers@https://github.com/DenysMoskalenko/python-powers
+```
+
+For local testing, copy or symlink this repository to:
+
+```text
+~/.cursor/plugins/local/python-powers
+```
+
+Then restart Cursor or run `Developer: Reload Window`.
+
 ## Principles
 
 - Keep guidance reusable across Python services.
