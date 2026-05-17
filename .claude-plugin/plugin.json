@@ -1,0 +1,31 @@
+{
+  "name": "python-powers",
+  "version": "0.1.0",
+  "description": "Reusable Python, FastAPI, PostgreSQL, testing, tooling, and AI-agent engineering skills for Claude Code.",
+  "author": {
+    "name": "Denys Moskalenko",
+    "email": "denysmoskalenko11@gmail.com",
+    "url": "https://github.com/DenysMoskalenko"
+  },
+  "homepage": "https://github.com/DenysMoskalenko/python-powers",
+  "repository": "https://github.com/DenysMoskalenko/python-powers",
+  "license": "Apache-2.0",
+  "skills": "./skills/",
+  "keywords": [
+    "python",
+    "backend",
+    "fastapi",
+    "database",
+    "postgresql",
+    "sqlalchemy",
+    "testing",
+    "pytest",
+    "tooling",
+    "uv",
+    "ruff",
+    "ty",
+    "ai-agents",
+    "llm-agents",
+    "pydantic-ai"
+  ]
+}
