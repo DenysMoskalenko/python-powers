@@ -39,6 +39,27 @@ Typical combinations:
 | Change linting, typing, dependencies, or test commands | `python-tooling` |
 | Edit one of this repository's skills | `skill-writer` plus the skill being changed |
 
+## Install As A Claude Code Plugin
+
+The plugin manifest lives at [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json).
+
+**From GitHub:**
+
+```bash
+claude plugin marketplace add https://github.com/DenysMoskalenko/python-powers
+claude plugin install python-powers@python-powers
+```
+
+**Local development:**
+
+```bash
+git clone https://github.com/DenysMoskalenko/python-powers
+claude plugin marketplace add ./python-powers
+claude plugin install python-powers@python-powers
+```
+
+After installation, the skills listed above are available to Claude Code via the `Skill` tool.
+
 ## Install As A Codex Plugin
 
 This repository is importable as a Codex plugin from GitHub. The plugin manifest lives

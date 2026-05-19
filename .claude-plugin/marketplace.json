@@ -1,0 +1,20 @@
+{
+  "name": "python-powers",
+  "owner": {
+    "name": "Denys Moskalenko",
+    "email": "denysmoskalenko11@gmail.com"
+  },
+  "metadata": {
+    "description": "Reusable Python, FastAPI, PostgreSQL, testing, tooling, and AI-agent engineering skills",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "python-powers",
+      "source": "./",
+      "description": "Reusable engineering skills for Python 3.13+, FastAPI, PostgreSQL, pytest, uv, ruff, ty, and pydantic-ai agents.",
+      "category": "developer-tools",
+      "tags": ["python", "fastapi", "postgresql", "testing", "ai-agents", "pydantic-ai"]
+    }
+  ]
+}
