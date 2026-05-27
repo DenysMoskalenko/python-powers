@@ -120,8 +120,6 @@ class AuthorModel(Base):
         passive_deletes=True,
         lazy='raise',
     )
-
-
 ```
 
 Key rules:
@@ -232,7 +230,7 @@ class AuthorService:
 
 Rule: **`joinedload` for one-to-one only. `selectinload` for everything else.**
 
-> SQLAlchemy's docs recommend `joinedload` for many-to-one as "most general purpose"; this skill takes the safer route to avoid the wide-shared-parent row-duplication failure mode.
+> SQLAlchemy's docs recommend `joinedload` for many-to-one as "most general purpose"; this skill takes the safer route to avoid `joinedload`'s redundant transfer of wide, heavily-shared parent data (and the row duplication it causes on collections) — a failure mode that can be 25×+ slower than `selectinload`.
 
 | Relationship | Loader |
 |---|---|
@@ -269,7 +267,7 @@ async def list_books(
 ) -> Page[Book]:
     query = (
         select(BookModel)
-        .options(selectinload(BookModel.author))  # many-to-one — selectinload
+        .options(selectinload(BookModel.author))  # many-to-one — selectinload (safer with wide shared parents)
         .options(selectinload(BookModel.tags))    # M2M — selectinload
     )
     query = self._apply_filters(query, filters)
