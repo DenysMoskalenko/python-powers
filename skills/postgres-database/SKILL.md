@@ -16,73 +16,7 @@ For HTTP routes and Pydantic schemas use `fastapi-service`. For shared test fixt
 
 ## Setup
 
-### DeclarativeBase
-
-```python
-from sqlalchemy import MetaData
-from sqlalchemy.orm import DeclarativeBase
-
-POSTGRES_INDEXES_NAMING_CONVENTION = {
-    'ix': '%(column_0_label)s_idx',
-    'uq': '%(table_name)s_%(column_0_name)s_key',
-    'ck': '%(table_name)s_%(constraint_name)s_check',
-    'fk': '%(table_name)s_%(column_0_name)s_fkey',
-    'pk': '%(table_name)s_pkey',
-}
-
-
-class Base(DeclarativeBase):
-    __abstract__ = True
-    metadata = MetaData(naming_convention=POSTGRES_INDEXES_NAMING_CONVENTION)
-```
-
-The naming convention ensures Alembic generates stable, predictable constraint names across migrations.
-
-### Engine and Session Factory
-
-```python
-from collections.abc import AsyncGenerator, AsyncIterable
-from contextlib import asynccontextmanager
-from functools import lru_cache
-
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
-
-from app.core.config import get_settings
-
-
-@lru_cache
-def async_engine() -> AsyncEngine:
-    settings = get_settings()
-    return create_async_engine(settings.DATABASE_URL.unicode_string(), pool_pre_ping=True)
-
-
-@lru_cache
-def async_session_factory() -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(bind=async_engine(), autoflush=False, expire_on_commit=False)
-
-
-async def get_session() -> AsyncIterable[AsyncSession]:
-    async with open_db_session() as session:
-        yield session
-
-
-@asynccontextmanager
-async def open_db_session() -> AsyncGenerator[AsyncSession, None]:
-    session: AsyncSession = async_session_factory()()
-    try:
-        yield session
-    except Exception:
-        await session.rollback()
-        raise
-    else:
-        await session.commit()
-    finally:
-        await session.close()
-```
-
-- `get_session` — async generator for FastAPI `Depends()`, one session per request
-- `open_db_session` — context manager for non-FastAPI use (scripts, agents, CLI)
-- `lru_cache` on engine and factory — singleton per process, clearable in tests
+See `reference/setup.md` for the `Base` / `DeclarativeBase` with Alembic naming convention, the `lru_cache`d async engine and session factory, and the `get_session` / `open_db_session` session providers.
 
 ### Models
 
@@ -353,7 +287,7 @@ These mean the database boundary is drifting. Stop and apply the named rule:
 | Add a repository layer between services and SQLAlchemy | Usage — services own queries directly |
 | Paginate with manual `limit` / `offset` math | Pagination — use `apaginate()` with a transformer |
 | Use `==` for requested case-insensitive text search | Filtering — use `icontains` / `ilike` |
-| Move request-scoped `commit()` / `rollback()` from the session provider into CRUD service methods | Engine and Session Factory — keep request transaction ownership in `open_db_session()` |
+| Move request-scoped `commit()` / `rollback()` from the session provider into CRUD service methods | Setup — keep request transaction ownership in `open_db_session()`; see `reference/setup.md` |
 | Wrap a single-statement CRUD write in `begin_nested()` / SAVEPOINT for "safety" or "test rollback" | Service Query Patterns — `begin_nested()` is for partial rollback inside a larger transaction; for test isolation use `join_transaction_mode='create_savepoint'` in the fixture |
 | Replace Postgres tests with SQLite or mocks | Testing — use testcontainers; see `reference/testing.md` |
 
