@@ -91,7 +91,7 @@ Models live in `app/infrastructure/db/models/<entity>.py`. Naming: `<Entity>Mode
 ```python
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, func, Integer, String, UniqueConstraint
+from sqlalchemy import Date, DateTime, ForeignKey, func, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
@@ -129,6 +129,35 @@ Key rules:
 - `UniqueConstraint` in `__table_args__` with descriptive `name` (Alembic needs stable names)
 - `TYPE_CHECKING` guard for forward references in relationships
 - Every `relationship(...)` declares `lazy='raise'` — no implicit loading; see [Loading relationships](#loading-relationships)
+
+One-to-one example (Book ↔ Cover — each book has at most one cover):
+
+```python
+class BookModel(Base):
+    __tablename__ = 'books'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(256))
+    author_id: Mapped[int] = mapped_column(Integer, ForeignKey('authors.id'))
+
+    cover: Mapped['CoverModel | None'] = relationship(
+        back_populates='book',
+        lazy='raise',
+    )
+
+
+class CoverModel(Base):
+    __tablename__ = 'covers'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    book_id: Mapped[int] = mapped_column(Integer, ForeignKey('books.id'), unique=True)
+    image_url: Mapped[str] = mapped_column(String(512))
+
+    book: Mapped['BookModel'] = relationship(
+        back_populates='cover',
+        lazy='raise',
+    )
+```
 
 ### Primary key choice
 
@@ -199,15 +228,16 @@ class AuthorService:
 
 **No hidden loads.** Every relationship attribute the service or response touches must be loaded explicitly in the query that fetches the parent, via `.options(joinedload(...))` or `.options(selectinload(...))`. Lazy loading is forbidden — all `relationship(...)` declarations set `lazy='raise'` so a missed eager-load fails with `InvalidRequestError` at the call site instead of leaking N+1 queries or surprising the next reader.
 
-Pick the loader by the **relationship shape** and **how many parents** you load:
+Rule: **`joinedload` for one-to-one only. `selectinload` for everything else.**
 
-| Relationship | Loading | Use |
-|---|---|---|
-| many-to-one / one-to-one | single fetch or list | `joinedload` |
-| one-to-many / many-to-many | single parent | `joinedload` (call `.unique()`) or `selectinload` |
-| one-to-many / many-to-many | multiple parents (lists, paginated) | `selectinload` |
+> SQLAlchemy's docs recommend `joinedload` for many-to-one as "most general purpose"; this skill takes the safer route to avoid `joinedload`'s redundant transfer of wide, heavily-shared parent data (and the row duplication it causes on collections) — a failure mode that can be 25×+ slower than `selectinload`.
 
-**Single fetch — `joinedload`** (one round-trip via LEFT OUTER JOIN, ideal for to-one):
+| Relationship | Loader |
+|---|---|
+| one-to-one | `joinedload` |
+| many-to-one / one-to-many / many-to-many | `selectinload` |
+
+**`joinedload` — one-to-one only** (single LEFT OUTER JOIN, guaranteed one joined row per parent):
 
 ```python
 from sqlalchemy import select
@@ -217,7 +247,7 @@ from sqlalchemy.orm import joinedload
 async def get_book_by_id(self, book_id: int) -> Book:
     query = (
         select(BookModel)
-        .options(joinedload(BookModel.author))
+        .options(joinedload(BookModel.cover))
         .filter(BookModel.id == book_id)
     )
     book = await self._session.scalar(query)
@@ -226,7 +256,7 @@ async def get_book_by_id(self, book_id: int) -> Book:
     return Book.model_validate(book)
 ```
 
-**Paginated list with a collection — `selectinload`** (parent SELECT + one `WHERE id IN (...)` SELECT per loaded relationship; no row duplication, no subquery wrap on `LIMIT`):
+**`selectinload` — everything else** (parent SELECT + one `WHERE id IN (...)` SELECT per relationship; no row duplication):
 
 ```python
 from sqlalchemy.orm import selectinload
@@ -237,8 +267,8 @@ async def list_books(
 ) -> Page[Book]:
     query = (
         select(BookModel)
-        .options(selectinload(BookModel.tags))  # M2M — selectinload, never joinedload
-        .options(joinedload(BookModel.author))  # to-one — joinedload is fine on lists
+        .options(selectinload(BookModel.author))  # many-to-one — selectinload (safer with wide shared parents)
+        .options(selectinload(BookModel.tags))    # M2M — selectinload
     )
     query = self._apply_filters(query, filters)
     return await apaginate(
@@ -315,9 +345,9 @@ These mean the database boundary is drifting. Stop and apply the named rule:
 | Leave `String` length implicit | Models — match schema `max_length` with explicit `String(N)` |
 | Add unnamed constraints | Models — every constraint needs a stable Alembic name |
 | Declare `relationship(...)` without `lazy='raise'` | Loading relationships — every relationship is opt-in per query; no implicit loads |
-| Touch a relationship attribute that the originating query did not eager-load | Loading relationships — add `.options(joinedload(...))` (to-one) or `.options(selectinload(...))` (collection) to the query, do not work around the error |
-| Use `joinedload` on a collection (one-to-many / many-to-many) in a paginated list query | Loading relationships — use `selectinload` for collections on multiple parents |
-| Forget `Result.unique()` / `scalars().unique()` after `joinedload(collection)` | Loading relationships — joinedload duplicates parent rows on collections; deduplicate or switch to `selectinload` |
+| Touch a relationship attribute that the originating query did not eager-load | Loading relationships — add `.options(joinedload(...))` (one-to-one) or `.options(selectinload(...))` (everything else) to the query, do not work around the error |
+| Use `joinedload` on anything other than a one-to-one relationship | Loading relationships — `joinedload` is for one-to-one only; use `selectinload` for many-to-one, one-to-many, and many-to-many |
+| Call `.unique()` on a query result | Loading relationships — `.unique()` is only needed when `joinedload` is used on a collection, which is forbidden; if you see `.unique()`, that's a signal to drop `joinedload` and switch to `selectinload` |
 | Soften `lazy='raise'` to `'select'` / `'raise_on_sql'` to make an error go away | Loading relationships — the rule stands; fix the originating query, do not weaken the model |
 | Hand-write a migration without autogenerate | Migrations — run `make migration MSG="..."` first |
 | Add a repository layer between services and SQLAlchemy | Usage — services own queries directly |
