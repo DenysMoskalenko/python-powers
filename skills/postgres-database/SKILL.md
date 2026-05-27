@@ -16,73 +16,7 @@ For HTTP routes and Pydantic schemas use `fastapi-service`. For shared test fixt
 
 ## Setup
 
-### DeclarativeBase
-
-```python
-from sqlalchemy import MetaData
-from sqlalchemy.orm import DeclarativeBase
-
-POSTGRES_INDEXES_NAMING_CONVENTION = {
-    'ix': '%(column_0_label)s_idx',
-    'uq': '%(table_name)s_%(column_0_name)s_key',
-    'ck': '%(table_name)s_%(constraint_name)s_check',
-    'fk': '%(table_name)s_%(column_0_name)s_fkey',
-    'pk': '%(table_name)s_pkey',
-}
-
-
-class Base(DeclarativeBase):
-    __abstract__ = True
-    metadata = MetaData(naming_convention=POSTGRES_INDEXES_NAMING_CONVENTION)
-```
-
-The naming convention ensures Alembic generates stable, predictable constraint names across migrations.
-
-### Engine and Session Factory
-
-```python
-from collections.abc import AsyncGenerator, AsyncIterable
-from contextlib import asynccontextmanager
-from functools import lru_cache
-
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
-
-from app.core.config import get_settings
-
-
-@lru_cache
-def async_engine() -> AsyncEngine:
-    settings = get_settings()
-    return create_async_engine(settings.DATABASE_URL.unicode_string(), pool_pre_ping=True)
-
-
-@lru_cache
-def async_session_factory() -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(bind=async_engine(), autoflush=False, expire_on_commit=False)
-
-
-async def get_session() -> AsyncIterable[AsyncSession]:
-    async with open_db_session() as session:
-        yield session
-
-
-@asynccontextmanager
-async def open_db_session() -> AsyncGenerator[AsyncSession, None]:
-    session: AsyncSession = async_session_factory()()
-    try:
-        yield session
-    except Exception:
-        await session.rollback()
-        raise
-    else:
-        await session.commit()
-    finally:
-        await session.close()
-```
-
-- `get_session` — async generator for FastAPI `Depends()`, one session per request
-- `open_db_session` — context manager for non-FastAPI use (scripts, agents, CLI)
-- `lru_cache` on engine and factory — singleton per process, clearable in tests
+See `reference/setup.md` for the `Base` / `DeclarativeBase` with Alembic naming convention, the `lru_cache`d async engine and session factory, and the `get_session` / `open_db_session` session providers.
 
 ### Models
 
@@ -228,16 +162,17 @@ class AuthorService:
 
 **No hidden loads.** Every relationship attribute the service or response touches must be loaded explicitly in the query that fetches the parent, via `.options(joinedload(...))` or `.options(selectinload(...))`. Lazy loading is forbidden — all `relationship(...)` declarations set `lazy='raise'` so a missed eager-load fails with `InvalidRequestError` at the call site instead of leaking N+1 queries or surprising the next reader.
 
-Rule: **`joinedload` for one-to-one only. `selectinload` for everything else.**
+**`selectinload` is the default.** Use `joinedload` only where related rows can't multiply: a one-to-one, or a many-to-one you fetch for a single parent. The two damage cases are `joinedload` on a collection (duplicates parent rows, wraps `LIMIT` in a subquery) and `joinedload` on a many-to-one across a list (re-transmits each shared parent's columns on every child row — `O(rows × parent_width)`, over an order of magnitude slower with wide, shared parents).
 
-> SQLAlchemy's docs recommend `joinedload` for many-to-one as "most general purpose"; this skill takes the safer route to avoid `joinedload`'s redundant transfer of wide, heavily-shared parent data (and the row duplication it causes on collections) — a failure mode that can be 25×+ slower than `selectinload`.
+| Relationship | get-by-id (one parent) | list / paginated |
+|---|---|---|
+| one-to-one | `joinedload` | `joinedload` |
+| many-to-one | `joinedload` | `selectinload` |
+| one-to-many / many-to-many | `selectinload` | `selectinload` |
 
-| Relationship | Loader |
-|---|---|
-| one-to-one | `joinedload` |
-| many-to-one / one-to-many / many-to-many | `selectinload` |
+> Matches SQLAlchemy's guidance that `joinedload` is the general-purpose strategy for many-to-one — with one carve-out: lists use `selectinload` to dodge the wide-shared-parent transfer blow-up.
 
-**`joinedload` — one-to-one only** (single LEFT OUTER JOIN, guaranteed one joined row per parent):
+**`joinedload` — to-one on a single-object fetch** (one round-trip via LEFT OUTER JOIN, one joined row per parent):
 
 ```python
 from sqlalchemy import select
@@ -247,7 +182,7 @@ from sqlalchemy.orm import joinedload
 async def get_book_by_id(self, book_id: int) -> Book:
     query = (
         select(BookModel)
-        .options(joinedload(BookModel.cover))
+        .options(joinedload(BookModel.author))
         .filter(BookModel.id == book_id)
     )
     book = await self._session.scalar(query)
@@ -256,7 +191,7 @@ async def get_book_by_id(self, book_id: int) -> Book:
     return Book.model_validate(book)
 ```
 
-**`selectinload` — everything else** (parent SELECT + one `WHERE id IN (...)` SELECT per relationship; no row duplication):
+**`selectinload` — collections, and any to-one on a list** (parent SELECT + one `WHERE id IN (...)` SELECT per relationship; no row duplication, dedupes shared parents):
 
 ```python
 from sqlalchemy.orm import selectinload
@@ -267,7 +202,7 @@ async def list_books(
 ) -> Page[Book]:
     query = (
         select(BookModel)
-        .options(selectinload(BookModel.author))  # many-to-one — selectinload (safer with wide shared parents)
+        .options(selectinload(BookModel.author))  # many-to-one on a list — selectinload (dedupes shared parents)
         .options(selectinload(BookModel.tags))    # M2M — selectinload
     )
     query = self._apply_filters(query, filters)
@@ -345,15 +280,15 @@ These mean the database boundary is drifting. Stop and apply the named rule:
 | Leave `String` length implicit | Models — match schema `max_length` with explicit `String(N)` |
 | Add unnamed constraints | Models — every constraint needs a stable Alembic name |
 | Declare `relationship(...)` without `lazy='raise'` | Loading relationships — every relationship is opt-in per query; no implicit loads |
-| Touch a relationship attribute that the originating query did not eager-load | Loading relationships — add `.options(joinedload(...))` (one-to-one) or `.options(selectinload(...))` (everything else) to the query, do not work around the error |
-| Use `joinedload` on anything other than a one-to-one relationship | Loading relationships — `joinedload` is for one-to-one only; use `selectinload` for many-to-one, one-to-many, and many-to-many |
+| Touch a relationship attribute that the originating query did not eager-load | Loading relationships — add `.options(joinedload(...))` (to-one on a single fetch) or `.options(selectinload(...))` (collections, or any to-one on a list) to the query, do not work around the error |
+| Use `joinedload` on a collection, or on a many-to-one in a list / paginated query | Loading relationships — both blow up (row duplication / `LIMIT` subquery wrap, or re-transmitting shared parents); use `selectinload`. `joinedload` is only for one-to-one, or a to-one on a single-object fetch |
 | Call `.unique()` on a query result | Loading relationships — `.unique()` is only needed when `joinedload` is used on a collection, which is forbidden; if you see `.unique()`, that's a signal to drop `joinedload` and switch to `selectinload` |
 | Soften `lazy='raise'` to `'select'` / `'raise_on_sql'` to make an error go away | Loading relationships — the rule stands; fix the originating query, do not weaken the model |
 | Hand-write a migration without autogenerate | Migrations — run `make migration MSG="..."` first |
 | Add a repository layer between services and SQLAlchemy | Usage — services own queries directly |
 | Paginate with manual `limit` / `offset` math | Pagination — use `apaginate()` with a transformer |
 | Use `==` for requested case-insensitive text search | Filtering — use `icontains` / `ilike` |
-| Move request-scoped `commit()` / `rollback()` from the session provider into CRUD service methods | Engine and Session Factory — keep request transaction ownership in `open_db_session()` |
+| Move request-scoped `commit()` / `rollback()` from the session provider into CRUD service methods | Setup — keep request transaction ownership in `open_db_session()`; see `reference/setup.md` |
 | Wrap a single-statement CRUD write in `begin_nested()` / SAVEPOINT for "safety" or "test rollback" | Service Query Patterns — `begin_nested()` is for partial rollback inside a larger transaction; for test isolation use `join_transaction_mode='create_savepoint'` in the fixture |
 | Replace Postgres tests with SQLite or mocks | Testing — use testcontainers; see `reference/testing.md` |
 

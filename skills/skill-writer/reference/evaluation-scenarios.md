@@ -285,12 +285,13 @@ Guidelines for writing scenarios:
 
 **Must produce**:
 - `select(BookModel)` with `.options(selectinload(BookModel.tags))` for the M2M collection
-- `.options(joinedload(BookModel.author))` for the to-one
+- `.options(selectinload(BookModel.author))` for the many-to-one — it's a to-one *on a list*, so `selectinload`, not `joinedload`
 - Pagination via `apaginate(...)` with a `TypeAdapter` transformer
 - Note that `lazy='raise'` would otherwise raise on tag/author access during serialization
 
 **Must not produce**:
 - `joinedload(BookModel.tags)` on the M2M (cartesian product / subquery wrap on LIMIT)
+- `joinedload(BookModel.author)` on the many-to-one — a to-one across a list is the wide-shared-parent blow-up case; use `selectinload`
 - Any reliance on lazy access (no `for tag in book.tags` outside an explicitly loaded query)
 - `subqueryload(...)` instead of `selectinload(...)`
 
@@ -321,6 +322,19 @@ Guidelines for writing scenarios:
 - Approval of removing or weakening `lazy='raise'`
 - Suggestion to set a class-wide eager loader (`lazy='selectin'` / `lazy='joined'`) as the default
 - Framing the rule as optional or per-team preference
+
+### Eval 8 — Single-object fetch of a to-one
+
+**Prompt**: "Add `get_book_by_id` that returns the book with its author (many-to-one)."
+
+**Must produce**:
+- `select(BookModel)` with `.options(joinedload(BookModel.author))` — a to-one fetched for a single parent is one round-trip, one joined row
+- `.filter(BookModel.id == book_id)` and a scalar fetch
+
+**Must not produce**:
+- `.options(selectinload(BookModel.author))` here — a single-object to-one fetch gains nothing from the second SELECT, just an extra round-trip
+- `.unique()` (no row multiplication on a to-one, so it is not needed)
+- Lazy access of `book.author` (would raise under `lazy='raise'`)
 
 ---
 
