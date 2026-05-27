@@ -285,12 +285,13 @@ Guidelines for writing scenarios:
 
 **Must produce**:
 - `select(BookModel)` with `.options(selectinload(BookModel.tags))` for the M2M collection
-- `.options(joinedload(BookModel.author))` for the to-one
+- `.options(selectinload(BookModel.author))` for the many-to-one (house rule: `joinedload` is one-to-one only)
 - Pagination via `apaginate(...)` with a `TypeAdapter` transformer
 - Note that `lazy='raise'` would otherwise raise on tag/author access during serialization
 
 **Must not produce**:
 - `joinedload(BookModel.tags)` on the M2M (cartesian product / subquery wrap on LIMIT)
+- `joinedload(BookModel.author)` on the many-to-one (house rule reserves `joinedload` for one-to-one; use `selectinload`)
 - Any reliance on lazy access (no `for tag in book.tags` outside an explicitly loaded query)
 - `subqueryload(...)` instead of `selectinload(...)`
 
