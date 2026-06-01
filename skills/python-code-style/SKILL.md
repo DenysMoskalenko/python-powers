@@ -10,7 +10,7 @@ Rules for writing production-quality Python. Every rule here reflects a delibera
 > Requires Python 3.13+.
 > Examples use `app/` as the top-level package. Substitute your package name if different.
 
-**Related**: `python-tooling`, `python-testing`, `fastapi-service`, `postgres-database`, `ai-agents`.
+**Related**: `python-tooling`, `python-testing`, `fastapi-service`, `postgres-database`, `ai-agents`, `project-scaffolding`.
 
 ## Type Hints
 

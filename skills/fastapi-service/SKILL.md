@@ -10,7 +10,7 @@ Patterns for building FastAPI services where services own business logic directl
 > Requires Python 3.13+, FastAPI, Pydantic, pydantic-settings.
 > Examples use `app/` as the top-level package. Substitute your package name if different.
 
-**Related**: `python-code-style`, `python-testing`, `postgres-database`, `ai-agents`.
+**Related**: `python-code-style`, `python-testing`, `postgres-database`, `ai-agents`, `project-scaffolding`.
 
 ## Architecture
 
@@ -24,30 +24,32 @@ Routes parse HTTP requests into typed schemas and delegate to services. Services
 
 ## Project Structure
 
+Package-by-feature: each module under `app/modules/` is one self-contained vertical slice — business CRUD, an AI agent, or operational. Cross-cutting technical code lives outside it — `app/core/` (config, exceptions, exception handlers, shared schemas, lifespan) and `app/infrastructure/` (db, llms). A business change touches one module folder; an infra change touches one infra folder.
+
 ```text
 app/
-  main.py                          # FastAPI app factory
-  api/
-    v1/
-      __init__.py                  # create_v1_router() aggregates domain routers
-      <domain>/
-        __init__.py
-        routes.py                  # Thin route handlers
-        schemas.py                 # Request/response Pydantic models
-  services/
-    <domain>_service.py            # Business logic
-  core/
-    config.py                      # pydantic-settings configuration
-    exceptions.py                  # Domain exception classes
-    exception_handlers.py          # Domain → HTTP status translation
-    schemas.py                     # Shared schema base classes
-    lifespan.py                    # App startup/shutdown
+  main.py                  # create_app() — FastAPI app factory
+  router.py                # create_router() — aggregates module routers
+  modules/
+    <module>/              # one vertical slice per module
+      routes.py            # thin HTTP handlers
+      schemas.py           # request/response + internal Pydantic models
+      service.py           # business logic + queries
+  core/                    # config, exceptions, exception_handlers, schemas, lifespan
   infrastructure/
-    db/                            # Database (see postgres-database skill)
-    llms/                          # LLM providers (see ai-agents skill)
+    db/                    # engine, session, models/ (see postgres-database)
+    llms/                  # LLM providers + registry (see ai-agents)
 ```
 
-Each domain gets its own folder under `app/api/v1/` with `routes.py` and `schemas.py`. Services live in `app/services/`.
+SQLAlchemy models are the one deliberate exception to "everything in the module folder" — they stay centralized in `app/infrastructure/db/models/` so Alembic autogenerates from one metadata and cross-model relationships need no cross-module imports.
+
+### Module growth
+
+Start flat: a module is three files (`routes.py`, `schemas.py`, `service.py`). Promote a concern to a subpackage **only once it splits into 2+ files** (e.g. `books/services/` holding `service_books.py` + `service_books_validator.py`). When a subpackage appears:
+
+- **Facade `__init__.py`** re-exports public symbols via `__all__`. External callers import from the package root (`from app.modules.books.services import BooksService`), never the deep path.
+- **Internal siblings import directly** (`from .service_books import BooksService`), never through their own facade — this avoids circular imports during package init.
+- **Keep the descriptive filename prefix** (`service_books.py`, not `books.py`) so files stay unambiguous in search and editor tabs.
 
 ## Routes
 
@@ -79,7 +81,6 @@ async def delete_author(author_id: int, service: Annotated[AuthorService, Depend
 
 Key patterns:
 - `Annotated[Service, Depends()]` — FastAPI auto-instantiates the service with its own dependencies
-- Filter/sorting models as `Depends()` — query parameters parsed into typed models
 - Return type annotations match the response schema
 - POST returns 201, DELETE returns 204 with `response_class=Response`
 
@@ -88,14 +89,11 @@ Key patterns:
 Services are classes that accept their dependencies via `Depends()`. They contain all business logic and raise domain exceptions.
 
 ```python
-from logging import getLogger
 from typing import Annotated
 
 from fastapi import Depends
 
 from app.core.exceptions import AlreadyExistError, NotFoundError
-
-_logger = getLogger(__name__)
 
 
 class AuthorService:
@@ -121,13 +119,12 @@ class AuthorService:
 
 Key patterns:
 - Domain exceptions (`NotFoundError`, `AlreadyExistError`) — never `HTTPException` in services
-- Public methods first, private methods after (class interface at the top)
 - Request-scoped services that receive `get_session` do not call `commit()` or `rollback()`; the session provider owns that transaction boundary
 - Logging for non-critical situations (e.g., delete of non-existent entity)
 
 ## Schemas
 
-Schemas live next to their routes in `<domain>/schemas.py`. Follow this inheritance pattern:
+Schemas live in the module's `schemas.py`. Follow this inheritance pattern:
 
 ```python
 from datetime import UTC, date, datetime
@@ -217,46 +214,9 @@ def conflict_exception_handler(request: Request, exc: AlreadyExistError) -> None
 
 Register handlers in `create_app()` — keep at the end so they wrap all middleware/routers.
 
-## Configuration
+## Setup
 
-Use `pydantic-settings` with `.env` file. Cache with `lru_cache`:
-
-```python
-from functools import lru_cache
-
-from pydantic import PostgresDsn, SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-class Settings(BaseSettings):
-    DATABASE_URL: PostgresDsn
-    OPENAI_API_KEY: SecretStr
-
-    model_config = SettingsConfigDict(case_sensitive=True, frozen=True, env_file='.env')
-
-
-@lru_cache
-def get_settings() -> Settings:
-    return Settings()
-```
-
-- `frozen=True` prevents mutation
-- `SecretStr` for sensitive values — never log or expose
-- Use `dist.env` as the template, never commit `.env`
-
-## App Factory
-
-```python
-def create_app() -> FastAPI:
-    settings = get_settings()
-    _app = FastAPI(title=settings.PROJECT_NAME, version=settings.PROJECT_VERSION, lifespan=lifespan)
-    _app.include_router(create_v1_router())
-    add_pagination(_app)
-    include_exception_handlers(_app)
-    return _app
-```
-
-Exception handlers must be registered last to wrap all middleware/routers.
+See `reference/setup.md` for one-time project wiring: `pydantic-settings` configuration (`Settings` + `lru_cache`d `get_settings`), the `create_router()` aggregator (business modules under `/v1`, operational endpoints unversioned), and the `create_app()` factory (register exception handlers **last** so they wrap all routers and middleware).
 
 ## Red Flags — STOP
 
@@ -267,14 +227,14 @@ These mean the service boundary is drifting. Stop and apply the named rule:
 | Put validation, lookup, or branching business logic in a route | Routes — inject the service, call one method, return the result |
 | Raise `HTTPException` inside a service | Exceptions — services raise domain exceptions only |
 | Add a repository layer "for cleanliness" | Architecture — services own business logic and queries directly |
-| Put request/response schemas outside the domain route package | Schemas — colocate schemas with routes in `app/api/v1/<domain>/schemas.py` |
+| Split one feature's routes, schemas, and service across separate top-level layers | Project Structure — each module is one self-contained vertical slice |
+| Import a subpackage's internals from outside via its deep path, or route an internal sibling import through its own facade | Module growth — outside callers import the facade; internal siblings import directly |
+| Put request/response schemas outside their module | Schemas — colocate schemas in the module's `schemas.py` |
 | Use bare `str` for `sort_by` or other constrained query fields | Schemas — use `Literal[...]` for local constrained values |
-| Register exception handlers before routers or middleware | App Factory — register handlers last |
+| Register exception handlers before routers or middleware | Setup — register handlers last |
 | Return ORM models without a response schema | Schemas — response models use `ConfigDict(from_attributes=True)` |
 
 ## Gotchas
 
-- Services raise domain exceptions, never `HTTPException` — the exception handler layer does the translation
-- Registration order in `create_app()` matters — exception handlers must be last
 - `Annotated[Service, Depends()]` with empty `Depends()` triggers FastAPI auto-injection of the service's own dependencies
 - Filter/sorting schemas as `Depends()` parameters parse query strings into typed models automatically

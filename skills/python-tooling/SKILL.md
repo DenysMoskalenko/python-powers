@@ -9,7 +9,7 @@ Recommended baseline for modern Python projects. Prefer `pyproject.toml` for too
 
 > Requires Python 3.13+, uv, ruff, ty.
 
-**Related**: `python-code-style`, `python-testing`.
+**Related**: `python-code-style`, `python-testing`, `project-scaffolding`.
 
 For code style rules use `python-code-style`. For test layout and helpers use `python-testing`.
 

@@ -6,3 +6,10 @@
 .env.*
 !.env.example
 !dist.env
+
+# Local Cursor MCP config (contains GitHub PAT)
+.cursor/mcp.json
+
+# Local scratch / research / sandbox artefacts (never committed)
+tmp/
+/.cursor/

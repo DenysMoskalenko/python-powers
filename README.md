@@ -16,6 +16,7 @@ The main artifact is the [`skills/`](skills/) directory. Each skill is a focused
 | [`fastapi-service`](skills/fastapi-service/SKILL.md) | FastAPI routes, services, schemas, settings, exception handling, and dependency wiring without a repository layer. |
 | [`postgres-database`](skills/postgres-database/SKILL.md) | PostgreSQL, SQLAlchemy 2.0 async, Alembic migrations, service-owned queries, and testcontainers-backed database tests. |
 | [`ai-agents`](skills/ai-agents/SKILL.md) | pydantic-ai agents in FastAPI services, typed dependencies, tools, model registry patterns, provider mapping, and tests. |
+| [`project-scaffolding`](skills/project-scaffolding/SKILL.md) | Generating a brand-new FastAPI service from the BoilerplateBuilder template with tests, linters, CI, and Docker working from the first commit. Greenfield only. |
 | [`skill-writer`](skills/skill-writer/SKILL.md) | House rules for adding, editing, splitting, or reviewing skills in this repository. |
 
 Some skills include additional reference material linked from their main guide.
@@ -33,6 +34,7 @@ Typical combinations:
 
 | Task | Skills |
 | --- | --- |
+| Start a brand-new service from scratch | `project-scaffolding` (then the domain skills it hands off to) |
 | Add or refactor Python application code | `python-code-style` |
 | Build a FastAPI endpoint backed by PostgreSQL | `python-code-style`, `fastapi-service`, `postgres-database`, `python-testing` |
 | Add an AI assistant endpoint to a service | `python-code-style`, `fastapi-service`, `ai-agents`, `python-testing` |

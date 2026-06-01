@@ -129,7 +129,7 @@ Guidelines for writing scenarios:
 
 ### Eval 3 — Run after every change
 
-**Prompt**: "I just changed `app/services/author_service.py`. What should I run?"
+**Prompt**: "I just changed `app/modules/authors/service.py`. What should I run?"
 
 **Must produce**:
 - `make lint` (or `uv run ruff format . && uv run ruff check --fix .`)
@@ -219,6 +219,19 @@ Guidelines for writing scenarios:
 
 **Must not produce**:
 - `await self._session.commit()` inside this request-scoped service
+
+### Eval 4 — Module placement
+
+**Prompt**: "Where do the routes, schemas, and service for a new `reviews` feature go?"
+
+**Must produce**:
+- `app/modules/reviews/` holding flat `routes.py`, `schemas.py`, `service.py`
+- Promote a concern to a subpackage only once it splits into 2+ files (facade `__init__.py`, internal siblings import directly)
+- SQLAlchemy models stay centralized in `app/infrastructure/db/models/`
+
+**Must not produce**:
+- The feature's routes, schemas, and service split across separate top-level layers instead of one `app/modules/reviews/` slice
+- A `services/` or `schemas/` subpackage created for a single file
 
 ---
 
@@ -345,8 +358,9 @@ Guidelines for writing scenarios:
 **Prompt**: "Define a read-only catalog assistant agent with two tools: count_items, list_items."
 
 **Must produce**:
-- `@dataclass(frozen=True, slots=True)` for deps
-- `build_catalog_assistant_agent(model: Model)` factory
+- Agent as a module `app/modules/catalog_assistant/` (`agents.py`, `prompts.py`, `service.py`, `routes.py`, `schemas/`)
+- `@dataclass(frozen=True, slots=True)` for deps in `schemas/schemas_agent.py`
+- `build_catalog_assistant_agent(model: Model)` factory in `agents.py`
 - `Agent[Deps, Output]` fully typed
 - Tools registered with `@agent.tool` inside the builder
 - Tool inputs as Pydantic `BaseModel` subclasses
@@ -354,6 +368,7 @@ Guidelines for writing scenarios:
 - System prompt is rule-based ("Use X for Y")
 
 **Must not produce**:
+- The agent's pieces (builder, route, service, schemas) split across separate top-level layers instead of one `app/modules/catalog_assistant/` module
 - Tools that import services directly instead of using `ctx.deps`
 - System prompt as a description ("You can use…")
 - Global/module-level agent instance
@@ -363,11 +378,13 @@ Guidelines for writing scenarios:
 **Prompt**: "Wire the catalog assistant into a POST endpoint."
 
 **Must produce**:
+- `get_catalog_assistant_agent` and `build_catalog_assistant_agent` both in `app/modules/catalog_assistant/agents.py`
 - `get_catalog_assistant_agent` depends on request payload + model registry
 - Route injects `Agent[...]` via `Depends(get_catalog_assistant_agent)`
 - Service method accepts the agent and calls `agent.run(question, deps=...)`
 
 **Must not produce**:
+- Builder/dependency split across separate `builder.py` / `dependencies.py` files
 - Agent constructed inside the route
 - Service owning the agent as a class attribute
 
@@ -560,3 +577,74 @@ Review it."
 - Approval of the `## When to use` bullet list as-is
 - A suggestion to "make the When to use section more detailed" or "add more triggers there"
 - Treating `## When to use` as a mandatory skeleton element
+
+---
+
+## project-scaffolding
+
+### Eval 1 — Greenfield: infer and scaffold
+
+**Prompt**: "Build me an app that serves a catalog of books with search and CRUD."
+
+**Must produce**:
+- Recognizes a from-zero project → generates from the BoilerplateBuilder template
+- Infers `project_type=fastapi_db` (the app persists data)
+- `uv tool run cookiecutter https://github.com/DenysMoskalenko/BoilerplateBuilder --no-input ... project_type=fastapi_db` with `project_type` passed explicitly
+- Baseline inputs left at default (Python 3.13, pre-commit + GitHub Actions on, OTEL off)
+- After generation: verify the green baseline (`make check` / `make test`), then hand off to `fastapi-service` + `postgres-database`
+
+**Must not produce**:
+- Hand-assembling `app/`, `pyproject.toml`, Docker, or CI from scratch
+- Asking the user which cookiecutter `project_type` to pick or naming the template at them
+- Leaving `project_type` at the template default (`fastapi_db_agent`)
+
+### Eval 2 — Ongoing work: do not scaffold
+
+**Prompt**: "Add a `GET /v1/books/{id}` endpoint to my service."
+
+**Must produce**:
+- Does NOT run the template or re-scaffold — the project already exists (ongoing work)
+- Routes the work to `fastapi-service` (plus `postgres-database` if DB-backed)
+
+**Must not produce**:
+- `cookiecutter` / generating structure into the existing repo
+- Treating "add an endpoint" as a greenfield trigger
+
+### Eval 3 — DB + AI inference
+
+**Prompt**: "I want an assistant that answers questions about our orders and remembers past conversations."
+
+**Must produce**:
+- Infers `project_type=fastapi_db_agent` (stored data **and** agent behavior)
+- Hand-off to `fastapi-service` + `postgres-database` + `ai-agents`
+
+**Must not produce**:
+- `fastapi_agent` (drops the persistence the prompt requires) or `fastapi_slim`
+- Asking the user to choose the variant by its cookiecutter name
+
+### Eval 4 — Invisible boilerplate, minimal questioning
+
+**Prompt**: "Spin up a tiny webhook receiver service, no database, nothing fancy."
+
+**Must produce**:
+- Infers `project_type=fastapi_slim`, passed explicitly in the command
+- Uses baseline defaults (Python 3.13, pre-commit + CI on, OTEL off) without quizzing the user about individual prompts
+
+**Must not produce**:
+- Interrogating the user about Python version / pre-commit / OTEL after they said "nothing fancy"
+- `fastapi_db` / `fastapi_db_agent` for a service that explicitly needs no database
+- Exposing cookiecutter mechanics or the template name to the user
+
+### Eval 5 — Generate into the current empty directory
+
+**Prompt**: "I just made an empty folder `orders-svc` and I'm in it — set up a new orders API with a database right here."
+
+**Must produce**:
+- Infers `project_type=fastapi_db` and passes it explicitly
+- `extract_to_current_dir="Extract Here"` so the project fills the current empty directory rather than nesting a subdir
+- `--no-input` invocation
+
+**Must not produce**:
+- The default `Create New`, which would nest the project at `orders-svc/orders-svc`
+- Generating into a directory that already holds a project
+- Asking the user about the `extract_to_current_dir` prompt by name

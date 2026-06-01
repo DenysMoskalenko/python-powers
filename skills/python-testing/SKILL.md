@@ -10,7 +10,7 @@ Testing patterns for FastAPI services. Scoped to HTTP/API testing, shared test f
 > Requires Python 3.13+, pytest, pytest-asyncio, polyfactory, httpx.
 > Examples use `app/` as the top-level package. Substitute your package name if different.
 
-**Related**: `python-code-style`, `python-tooling`, `postgres-database`, `ai-agents`.
+**Related**: `python-code-style`, `python-tooling`, `postgres-database`, `ai-agents`, `project-scaffolding`.
 
 ## Test Philosophy
 

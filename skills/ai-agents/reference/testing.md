@@ -36,10 +36,8 @@ from pydantic_ai import Agent
 from pydantic_ai.models import Model
 from pydantic_ai.models.test import TestModel
 
-from app.agents.catalog_assistant.builder import build_catalog_assistant_agent
-from app.agents.catalog_assistant.dependencies import get_catalog_assistant_agent
-from app.agents.catalog_assistant.schemas import CatalogAssistantDeps
-from app.api.catalog_assistant.schemas import CatalogAssistantResponse
+from app.modules.catalog_assistant.agents import build_catalog_assistant_agent, get_catalog_assistant_agent
+from app.modules.catalog_assistant.schemas import CatalogAssistantDeps, CatalogAssistantResponse
 from tests.dependencies import temporary_override
 
 AgentDeps = TypeVar('AgentDeps')
@@ -105,7 +103,7 @@ Use `agent.override(model=...)` to swap the model for a single test. The `with` 
 from httpx import AsyncClient
 from pydantic_ai import Agent
 
-from app.api.catalog_assistant.schemas import CatalogAssistantResponse
+from app.modules.catalog_assistant.schemas import CatalogAssistantResponse
 
 
 class TestCatalogAssistantResponse:
