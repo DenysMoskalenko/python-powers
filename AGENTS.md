@@ -12,6 +12,7 @@ The main artifact is the `skills/` tree:
 - `fastapi-service` - FastAPI route, service, schema, config, and exception patterns
 - `postgres-database` - SQLAlchemy, PostgreSQL, Alembic, and database test patterns
 - `ai-agents` - pydantic-ai agent structure, providers, tools, routes, and tests
+- `project-scaffolding` - greenfield project generation from the BoilerplateBuilder template (new services only)
 - `skill-writer` - house rules for creating and editing skills in this repo
 
 ## If You Are an AI Agent

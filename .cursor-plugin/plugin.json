@@ -2,7 +2,7 @@
   "name": "python-powers",
   "displayName": "AI Python Powers",
   "version": "0.1.0",
-  "description": "Reusable Python, FastAPI, PostgreSQL, testing, tooling, and AI-agent engineering skills.",
+  "description": "Reusable Python, FastAPI, PostgreSQL, testing, tooling, project scaffolding, and AI-agent engineering skills.",
   "author": {
     "name": "Denys Moskalenko",
     "email": "denysmoskalenko11@gmail.com"
@@ -25,7 +25,10 @@
     "ty",
     "ai-agents",
     "llm-agents",
-    "pydantic-ai"
+    "pydantic-ai",
+    "scaffolding",
+    "boilerplate",
+    "cookiecutter"
   ],
   "category": "developer-tools",
   "tags": [
@@ -34,7 +37,8 @@
     "fastapi",
     "database",
     "testing",
-    "ai-agents"
+    "ai-agents",
+    "scaffolding"
   ],
   "skills": "./skills/"
 }

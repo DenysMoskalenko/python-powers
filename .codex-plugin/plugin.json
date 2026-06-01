@@ -25,13 +25,16 @@
     "ty",
     "ai-agents",
     "llm-agents",
-    "pydantic-ai"
+    "pydantic-ai",
+    "scaffolding",
+    "boilerplate",
+    "cookiecutter"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "AI Python Powers",
-    "shortDescription": "Reusable Python, FastAPI, PostgreSQL, testing, and AI-agent engineering skills",
-    "longDescription": "AI Python Powers gives Codex focused engineering guidance for Python 3.13+ services, FastAPI, PostgreSQL, pytest, uv, ruff, ty, and pydantic-ai agents.",
+    "shortDescription": "Reusable Python, FastAPI, PostgreSQL, testing, scaffolding, and AI-agent engineering skills",
+    "longDescription": "AI Python Powers gives Codex focused engineering guidance for Python 3.13+ services, FastAPI, PostgreSQL, pytest, uv, ruff, ty, and pydantic-ai agents, plus scaffolding brand-new services from a ready-made template.",
     "developerName": "Denys Moskalenko",
     "category": "Coding",
     "capabilities": [
@@ -43,6 +46,7 @@
     "privacyPolicyURL": "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
     "termsOfServiceURL": "https://docs.github.com/en/site-policy/github-terms/github-terms-of-service",
     "defaultPrompt": [
+      "Scaffold a brand-new FastAPI service from scratch.",
       "Use Python Powers for this FastAPI change.",
       "Review this service against Python Powers.",
       "Add tests using the Python Powers patterns."

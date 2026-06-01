@@ -5,23 +5,41 @@ description: Use when building, integrating, or testing pydantic-ai agents insid
 
 # AI Agent Patterns
 
-Patterns for building pydantic-ai agents integrated into FastAPI services.
+Patterns for building pydantic-ai agents integrated into FastAPI services. An agent is a module like any other (`app/modules/<module>/`) — only its internals (builder, tools, prompt, agent/tool schemas) are agent-specific.
 
 > Requires Python 3.13+, pydantic-ai, FastAPI.
 > Examples use `app/` as the top-level package (the reference project's convention). Substitute your package name if different.
 
-**Related**: `python-code-style`, `fastapi-service`, `python-testing`.
+**Related**: `python-code-style`, `fastapi-service`, `python-testing`, `project-scaffolding`.
 
 For generic FastAPI route/service patterns use `fastapi-service`. For database queries use `postgres-database`. For shared test infrastructure use `python-testing`.
 
+## Module layout
+
+An agent is a module like any other feature — its builder, tools, prompt, service, route, and schemas live together in one slice. Here, `catalog_assistant`:
+
+```text
+modules/catalog_assistant/
+  routes.py            # thin route handler
+  service.py           # runs the agent with assembled deps
+  agents.py            # build_*_agent (builder) + get_*_agent (FastAPI dependency)
+  prompts.py           # system prompt text
+  schemas/             # grew to a subpackage — API contract vs agent/tool I/O
+    __init__.py        # facade re-exporting both files
+    schemas_api.py     # request/response + model-name enum (the HTTP contract)
+    schemas_agent.py   # agent deps + tool input/output models
+```
+
+Model and provider wiring stays in `app/infrastructure/llms/`.
+
 ## Agent dependencies
 
-Define agent dependencies as a frozen dataclass. The agent receives these at runtime via `deps`:
+Define agent dependencies as a frozen dataclass in `schemas/schemas_agent.py`. The agent receives these at runtime via `deps`:
 
 ```python
 from dataclasses import dataclass
 
-from app.services.catalog_service import CatalogService
+from app.modules.catalog.service import CatalogService
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,22 +53,22 @@ class CatalogAssistantDeps:
 
 ## Agent factory
 
-Separate the agent builder from the FastAPI dependency. The builder creates the agent with a given model — this makes testing trivial:
+`agents.py` holds two functions: the **builder** below (`build_catalog_assistant_agent`), which takes a ready `Model` so tests can pass `TestModel()`, and the **FastAPI dependency** (`get_catalog_assistant_agent`, further down). The builder:
 
 ```python
 from fastapi_pagination import Params
 from pydantic_ai import Agent, ModelSettings, RunContext
 from pydantic_ai.models import Model
 
-from app.agents.catalog_assistant.prompts import CATALOG_ASSISTANT_SYSTEM_PROMPT
-from app.agents.catalog_assistant.schemas import (
+from app.modules.catalog.schemas import CatalogListSorting
+from app.modules.catalog_assistant.prompts import CATALOG_ASSISTANT_SYSTEM_PROMPT
+from app.modules.catalog_assistant.schemas import (
     CatalogAssistantDeps,
+    CatalogAssistantResponse,
     CatalogToolItem,
     CountCatalogItemsToolInput,
     ListCatalogItemsToolInput,
 )
-from app.api.catalog.schemas import CatalogListSorting
-from app.api.catalog_assistant.schemas import CatalogAssistantResponse
 
 
 def build_catalog_assistant_agent(model: Model) -> Agent[CatalogAssistantDeps, CatalogAssistantResponse]:
@@ -90,12 +108,12 @@ Key patterns:
 
 ## Tool input schemas
 
-Tool parameters are Pydantic models. The LLM sees them as function parameter schemas:
+Tool parameters are Pydantic models. The LLM sees them as function parameter schemas. They live in `schemas/schemas_agent.py` alongside the deps and tool-output models — kept apart from `schemas_api.py` (the HTTP request/response contract):
 
 ```python
 from pydantic import BaseModel, Field
 
-from app.api.catalog.schemas import CatalogListFilters
+from app.modules.catalog.schemas import CatalogListFilters
 
 
 class CountCatalogItemsToolInput(BaseModel):
@@ -127,7 +145,7 @@ Rules outperform descriptions ("Use X for Y" beats "You can use X").
 
 ## Model registry
 
-A `TypeAlias` mapping request model names to fully constructed `Model` instances. Keep provider wiring in `infrastructure/llms/`:
+A `TypeAlias` mapping request model names to fully constructed `Model` instances, defined in `agents.py`. Keep provider wiring in `infrastructure/llms/`:
 
 ```python
 from typing import Annotated, TypeAlias
@@ -135,8 +153,8 @@ from typing import Annotated, TypeAlias
 from fastapi import Depends
 from pydantic_ai.models import Model
 
-from app.api.catalog_assistant.schemas import AssistantModelName
 from app.infrastructure.llms.registry import get_fallback_model, get_primary_model
+from app.modules.catalog_assistant.schemas import AssistantModelName
 
 ModelRegistry: TypeAlias = dict[AssistantModelName, Model]
 
@@ -151,7 +169,7 @@ def get_model_registry(
     }
 ```
 
-Use `StrEnum` for model names — serializes cleanly in JSON:
+Use `StrEnum` for model names — serializes cleanly in JSON. It belongs in `schemas/schemas_api.py` (part of the request contract):
 
 ```python
 from enum import StrEnum
@@ -164,7 +182,7 @@ class AssistantModelName(StrEnum):
 
 ## Agent as FastAPI dependency
 
-The agent dependency reads the request payload to select the model, then builds the agent:
+The dependency sits in the same `agents.py` as the builder and `get_model_registry`. It reads the request payload to select the model, then calls the builder:
 
 ```python
 from typing import Annotated
@@ -172,10 +190,11 @@ from typing import Annotated
 from fastapi import Depends
 from pydantic_ai import Agent
 
-from app.agents.catalog_assistant.builder import build_catalog_assistant_agent
-from app.agents.catalog_assistant.dependencies import ModelRegistry, get_model_registry
-from app.agents.catalog_assistant.schemas import CatalogAssistantDeps
-from app.api.catalog_assistant.schemas import CatalogAssistantRequest, CatalogAssistantResponse
+from app.modules.catalog_assistant.schemas import (
+    CatalogAssistantDeps,
+    CatalogAssistantRequest,
+    CatalogAssistantResponse,
+)
 
 
 def get_catalog_assistant_agent(
@@ -195,9 +214,12 @@ from typing import Annotated
 from fastapi import Depends
 from pydantic_ai import Agent
 
-from app.agents.catalog_assistant.schemas import CatalogAssistantDeps
-from app.api.catalog_assistant.schemas import CatalogAssistantRequest, CatalogAssistantResponse
-from app.services.catalog_service import CatalogService
+from app.modules.catalog.service import CatalogService
+from app.modules.catalog_assistant.schemas import (
+    CatalogAssistantDeps,
+    CatalogAssistantRequest,
+    CatalogAssistantResponse,
+)
 
 
 class CatalogAssistantService:
@@ -223,10 +245,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from pydantic_ai import Agent
 
-from app.agents.catalog_assistant.dependencies import get_catalog_assistant_agent
-from app.agents.catalog_assistant.schemas import CatalogAssistantDeps
-from app.api.catalog_assistant.schemas import CatalogAssistantRequest, CatalogAssistantResponse
-from app.services.catalog_assistant_service import CatalogAssistantService
+from app.modules.catalog_assistant.agents import get_catalog_assistant_agent
+from app.modules.catalog_assistant.schemas import (
+    CatalogAssistantDeps,
+    CatalogAssistantRequest,
+    CatalogAssistantResponse,
+)
+from app.modules.catalog_assistant.service import CatalogAssistantService
 
 router = APIRouter(tags=['Catalog Assistant'])
 

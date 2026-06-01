@@ -10,7 +10,7 @@ SQLAlchemy 2.0 async patterns for PostgreSQL. Services own queries directly — 
 > Requires Python 3.13+, SQLAlchemy 2.0+, Alembic, PostgreSQL, testcontainers, psycopg.
 > Examples use `app/` as the top-level package. Substitute your package name if different.
 
-**Related**: `python-code-style`, `python-testing`, `python-tooling`, `fastapi-service`.
+**Related**: `python-code-style`, `python-testing`, `python-tooling`, `fastapi-service`, `project-scaffolding`.
 
 For HTTP routes and Pydantic schemas use `fastapi-service`. For shared test fixtures and assertion patterns use `python-testing`.
 
