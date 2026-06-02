@@ -74,7 +74,7 @@ In Codex, import this repository URL:
 https://github.com/DenysMoskalenko/python-powers
 ```
 
-After installation, enable **AI Python Powers** and use the skills listed above.
+After installation, enable **Python Powers** and use the skills listed above.
 
 ## Install As A Cursor Plugin
 
