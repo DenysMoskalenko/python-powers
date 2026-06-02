@@ -13,15 +13,10 @@ Recommended baseline for modern Python projects. Prefer `pyproject.toml` for too
 
 For code style rules use `python-code-style`. For test layout and helpers use `python-testing`.
 
+For first-time project setup, full `pyproject.toml` tool snippets, and the baseline
+`.pre-commit-config.yaml`, load `reference/setup.md`.
+
 ## uv — Dependency Management
-
-### Setup
-
-```bash
-uv venv --python 3.13
-source .venv/bin/activate
-uv sync
-```
 
 ### Adding Dependencies
 
@@ -46,61 +41,16 @@ This ensures the correct virtualenv and dependencies are used regardless of shel
 
 ## ruff — Formatting and Linting
 
-### Configuration
+Ruff owns formatting, linting, and import sorting. Do not add black, isort, or flake8
+separately unless the repo has a specific migration constraint.
 
-```toml
-[tool.ruff]
-line-length = 120
-target-version = "py313"
-
-[tool.ruff.format]
-quote-style = "single"
-indent-style = "space"
-docstring-code-format = true
-
-[tool.ruff.lint]
-select = [
-    "E",     # Errors
-    "F",     # Pyflakes
-    "I",     # isort
-    "S",     # flake8-bandit (security)
-    "T20",   # flake8-print
-    "ASYNC", # flake8-async
-    "A",     # flake8-builtins
-    "B",     # flake8-bugbear
-    "C4",    # flake8-comprehensions
-    "C90",   # McCabe complexity
-    "DTZ",   # flake8-datetimez
-    "ARG",   # flake8-unused-arguments
-    "BLE",   # flake8-blind-except
-    "ERA",   # eradicate (commented code)
-    "ANN",   # flake8-annotations
-    "FAST",  # FastAPI
-    "RUF",   # Ruff-specific
-]
-pydocstyle.convention = 'google'
-
-[tool.ruff.lint.mccabe]
-max-complexity = 15
-
-[tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101", "ARG"]
-
-[tool.ruff.lint.isort]
-known-local-folder = ["tests", "app", "scripts"]
-split-on-trailing-comma = true
-combine-as-imports = true
-case-sensitive = false
-detect-same-package = true
-order-by-type = false
-force-sort-within-sections = true
-```
-
-Key choices:
+Baseline choices:
 - **120-character lines** — wide enough for modern screens, narrow enough for side-by-side diffs
 - **Single quotes** — less visual noise than double quotes
 - **Tests ignore S101** (assert) and **ARG** (unused arguments) — these are normal in test code
 - **isort integrated** — import sorting handled by ruff, no separate isort config needed
+
+Load `reference/setup.md` when creating or changing the full ruff configuration.
 
 ### Usage
 
@@ -120,15 +70,6 @@ uv run ruff check --fix .
 
 ## ty — Type Checking
 
-### Configuration
-
-```toml
-[tool.ty.rules]
-unused-ignore-comment = "ignore"
-```
-
-### Usage
-
 ```bash
 # If the project exposes a Make target
 make typecheck
@@ -137,18 +78,18 @@ make typecheck
 uv run ty check
 ```
 
+Load `reference/setup.md` when creating or changing the full ty configuration.
+
 ## pytest — Test Configuration
 
-```toml
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-addopts = "-ra"
-```
+Use pytest through the repo's wrapper or `uv run pytest`. Keep output compact enough to
+spot failures quickly.
 
-- `asyncio_mode = auto` — all async tests run without `@pytest.mark.asyncio`
-- `addopts = -ra` — compact extra summary for skipped, xfailed, and failed tests
+- Use `asyncio_mode = auto` so async tests run without `@pytest.mark.asyncio`
+- Use `addopts = -ra` for compact extra summaries of skipped, xfailed, and failed tests
 - Add `asyncio_default_fixture_loop_scope = "session"` only when you actually use session-scoped async fixtures
 - Add targeted `filterwarnings` entries only for third-party warnings you intentionally suppress
+- Load `reference/setup.md` when creating or changing the baseline pytest configuration
 
 ## Zero Warnings Policy
 
@@ -177,39 +118,9 @@ The rule: a clean output is a feature. If you cannot make it clean, explain why,
 
 ## pre-commit
 
-Pre-commit hooks run ruff and ty from the project's uv environment before each commit:
-
-```yaml
-repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    hooks:
-      - id: trailing-whitespace
-      - id: end-of-file-fixer
-      - id: check-added-large-files
-      - id: check-json
-      - id: check-toml
-      - id: check-yaml
-      - id: check-merge-conflict
-
-  - repo: local
-    hooks:
-      - id: ruff-check
-        name: ruff check
-        entry: uv run ruff check --fix
-        language: system
-        types: [python]
-      - id: ruff-format
-        name: ruff format
-        entry: uv run ruff format
-        language: system
-        types: [python]
-      - id: ty
-        name: ty check
-        entry: uv run ty check
-        language: system
-        types: [python]
-        pass_filenames: false
-```
+Pre-commit should run project tools from the project's uv environment. Keep ruff and ty
+as `repo: local` hooks using `uv run`; do not use `astral-sh/ruff-pre-commit` for the
+baseline. Load `reference/setup.md` for the full `.pre-commit-config.yaml` snippet.
 
 ## Optional Makefile Workflow
 
