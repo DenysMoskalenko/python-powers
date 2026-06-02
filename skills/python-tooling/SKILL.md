@@ -177,7 +177,7 @@ The rule: a clean output is a feature. If you cannot make it clean, explain why,
 
 ## pre-commit
 
-Pre-commit hooks run ruff and ty before each commit:
+Pre-commit hooks run ruff and ty from the project's uv environment before each commit:
 
 ```yaml
 repos:
@@ -191,14 +191,18 @@ repos:
       - id: check-yaml
       - id: check-merge-conflict
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    hooks:
-      - id: ruff-check
-        args: [--fix]
-      - id: ruff-format
-
   - repo: local
     hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types: [python]
       - id: ty
         name: ty check
         entry: uv run ty check

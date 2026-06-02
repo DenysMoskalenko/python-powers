@@ -136,6 +136,18 @@ Guidelines for writing scenarios:
 - Mention of `make typecheck` and `make test` before PR
 - `make check` before opening a PR
 
+### Eval 4 — Local pre-commit tools
+
+**Prompt**: "Add the baseline pre-commit config for a new Python service."
+
+**Must produce**:
+- `repo: local` hooks for both `ruff check --fix` and `ruff format`
+- Ruff hook entries that run through `uv run`
+- Local `ty` hook using `uv run ty check`
+
+**Must not produce**:
+- `repo: https://github.com/astral-sh/ruff-pre-commit`
+
 ---
 
 ## python-testing
