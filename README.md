@@ -64,17 +64,27 @@ After installation, the skills listed above are available to Claude Code via the
 
 ## Install As A Codex Plugin
 
-This repository is importable as a Codex plugin from GitHub. The plugin manifest lives
-at [`.codex-plugin/plugin.json`](.codex-plugin/plugin.json) and points Codex at the
-root [`skills/`](skills/) directory.
+This repository is a Codex plugin marketplace. The marketplace file lives at
+[`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json), and the
+plugin manifest lives at [`.codex-plugin/plugin.json`](.codex-plugin/plugin.json).
 
-In Codex, import this repository URL:
+**Codex app:**
+
+Open **Plugins**, add this GitHub marketplace, then install and enable
+**Python Powers**:
 
 ```text
-https://github.com/DenysMoskalenko/python-powers
+git@github.com:DenysMoskalenko/python-powers.git
 ```
 
-After installation, enable **Python Powers** and use the skills listed above.
+**Codex CLI:**
+
+```bash
+codex plugin marketplace add git@github.com:DenysMoskalenko/python-powers.git
+codex plugin add python-powers@python-powers
+```
+
+Start a new Codex thread after installation so the skills are loaded.
 
 ## Install As A Cursor Plugin
 
