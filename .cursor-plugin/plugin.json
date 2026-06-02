@@ -1,6 +1,6 @@
 {
   "name": "python-powers",
-  "displayName": "AI Python Powers",
+  "displayName": "Python Powers",
   "version": "0.1.0",
   "description": "Reusable Python, FastAPI, PostgreSQL, testing, tooling, project scaffolding, and AI-agent engineering skills.",
   "author": {
