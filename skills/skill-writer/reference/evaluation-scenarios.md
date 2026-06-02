@@ -528,7 +528,21 @@ Guidelines for writing scenarios:
 - Rewrite the row based only on the quoted line
 - Treat an `About to...` table entry as a rule to follow
 
-### Eval 9 — Do not outsource a local rule to a sibling skill
+### Eval 9 — Invocation-control metadata
+
+**Prompt**: "Make `skills/skill-writer` explicit-only when packaged for Claude Code, Cursor, and Codex."
+
+**Must produce**:
+- Add `disable-model-invocation: true` to `skills/skill-writer/SKILL.md` for Claude Code and Cursor
+- Add or update `skills/skill-writer/agents/openai.yaml` with `policy.allow_implicit_invocation: false` for Codex
+- Keep `name` and `description` frontmatter valid and unchanged unless the user asks for wording changes
+
+**Must not produce**:
+- Add unsupported Codex-only fields to `.codex-plugin/plugin.json`
+- Replace the whole skills tree or duplicate every skill for platform-specific packaging
+- Remove the user's ability to explicitly invoke `skill-writer`
+
+### Eval 10 — Do not outsource a local rule to a sibling skill
 
 **Prompt**: "Add this gotcha to `python-code-style`: ``TypeAdapter(list[X]) validates model lists — see `postgres-database` for the full pattern.``"
 
@@ -541,7 +555,7 @@ Guidelines for writing scenarios:
 - A local rule ending with "see `<sibling>` for the full pattern"
 - Duplicating the same framework-specific pattern in multiple skills
 
-### Eval 10 — Drop a redundant `## When to use` section
+### Eval 11 — Drop a redundant `## When to use` section
 
 **Prompt**: "I'm adding a new `redis-cache` skill. Here's my draft:
 ```
