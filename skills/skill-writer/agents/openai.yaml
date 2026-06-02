@@ -1,0 +1,6 @@
+interface:
+  display_name: "Skill Writer"
+  short_description: "Author and edit Python Powers skills"
+
+policy:
+  allow_implicit_invocation: false

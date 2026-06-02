@@ -1,6 +1,7 @@
 ---
 name: skill-writer
 description: Use when creating, editing, splitting, or reviewing `skills/<name>/SKILL.md` files in this repository, or when adding evaluation scenarios for those skills. Applies only to this repository's `skills/` tree; for foreign skill systems use that system's own authoring guide.
+disable-model-invocation: true
 ---
 
 # Skill Writer (This Repository Only)
@@ -55,7 +56,7 @@ Rules:
   - If the skill name + topics already exclude the topic, do NOT add a "Does not cover X" line — it is dead weight paid on every skill-discovery decision
 - Avoid pairing a "Use when…" sentence with an "Apply when…" sentence that just restates the same triggers
 - No `compatibility:` field — put `> Requires ...` in the body instead
-- No other frontmatter keys
+- No other frontmatter keys except platform invocation-control keys already used in this repo, such as `disable-model-invocation`
 
 ### Body skeleton
 
