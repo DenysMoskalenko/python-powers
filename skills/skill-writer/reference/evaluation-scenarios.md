@@ -275,7 +275,7 @@ Each skill section also starts with a `### Triggering` block that tests discover
 
 **Should not load**:
 - "Add a `BookModel` with a foreign key to authors" → `postgres-database`
-- "Create an assistant endpoint that answers catalog questions" → `ai-agents` (composes with this skill, but the agent patterns own the work)
+- "Add a new dependency and tweak the ruff config" → `python-tooling`
 - "Start a brand-new orders service" → `project-scaffolding`
 
 ### Eval 1 — New CRUD endpoint
