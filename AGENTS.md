@@ -93,15 +93,15 @@ For Python examples inside skills:
 - Follow the local `python-code-style` skill.
 - Prefer examples that are realistic enough to copy into a service with minimal edits.
 
-## Merge Request Discipline
+## Pull Request Discipline
 
-This repository is hosted on GitLab. Say "merge request" unless you are explicitly
+This repository is hosted on GitHub. Say "pull request" unless you are explicitly
 talking about another platform.
 
-Before opening or preparing a merge request:
+Before opening or preparing a pull request:
 
 1. Confirm the problem is real and belongs in this shared skills repo.
-2. Search existing issues and merge requests if GitLab access is available.
+2. Search existing issues and pull requests if GitHub access is available.
 3. Show the complete diff to the repository owner.
 4. Get explicit approval before submitting.
 5. Include what changed, why it changed, and how it was verified.

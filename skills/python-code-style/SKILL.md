@@ -86,13 +86,7 @@ SortingOrder: TypeAlias = Literal['asc', 'desc']
 
 ## Dependency Injection
 
-Inject dependencies via constructor parameters or framework DI (`Depends()`). Never instantiate collaborators inside a class. This applies broadly, not just to FastAPI.
-
-```python
-class AuthorService:
-    def __init__(self, session: Annotated[AsyncSession, Depends(get_session)]) -> None:
-        self._session = session
-```
+Inject dependencies via constructor parameters or framework DI (`Depends()`). Never instantiate collaborators inside a class. This applies broadly, not just to FastAPI — the `AuthorService` constructor under [Type Hints](#type-hints) shows the pattern.
 
 ## Library-First
 
@@ -127,7 +121,7 @@ Code should be readable without comments. Achieve this through:
 - Workarounds: what's being worked around and why
 
 ```python
-include_exception_handlers(_app)
+include_exception_handlers(_app)  # registered last so handlers wrap all routers and middleware
 ```
 
 ## Break Down Complexity
@@ -204,9 +198,9 @@ Fail fast pairs with model-first: Pydantic/dataclass validation at the boundary 
 
 Non-negotiable defaults, priority order:
 
-1. **KISS** — simple, readable solutions over clever ones
-2. **YAGNI** — don't build for hypothetical future needs
-3. **Single Responsibility** — one class, one job, one reason to change
+1. **KISS**
+2. **YAGNI**
+3. **Single Responsibility**
 4. **DRY** — one source of truth, but don't DRY prematurely (wait for the third repetition)
 5. **Encapsulation** — hide internal state (`_` prefix), expose behavior
 6. **Loose Coupling** — depend on abstractions, inject dependencies
@@ -217,11 +211,8 @@ Non-negotiable defaults, priority order:
 
 Use the latest language features. Python 3.13+ is the target.
 
-- `uuid.uuid7()` over `uuid.uuid4()` when available (ordered, better for DB indexes)
-- f-strings for all string formatting
-- `match` statements when they improve readability over `if/elif`
-- `pathlib.Path` over `os.path`
-- `datetime.now(UTC)` over `datetime.utcnow()`
+- `uuid.uuid7()` over `uuid.uuid4()` when ordered IDs matter (e.g. DB indexes) — stdlib `uuid7` is Python 3.14+; on 3.13 use the `uuid6` library
+- `datetime.now(UTC)` over the deprecated `datetime.utcnow()`
 
 ## Reuse Before Creating
 

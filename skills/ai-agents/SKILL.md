@@ -1,6 +1,6 @@
 ---
 name: ai-agents
-description: Use when building, integrating, or testing pydantic-ai agents inside a FastAPI service — defining the Agent, typed dependencies, tools, system prompts, model registry, agent-as-FastAPI-dependency wiring, or agent test fixtures (TestModel, FunctionModel, provider error mapping).
+description: Use when adding an LLM, assistant, or chatbot endpoint to a FastAPI service, or when building, integrating, or testing pydantic-ai agents — defining the Agent, typed dependencies, tools, system prompts, model registry, agent-as-FastAPI-dependency wiring, or agent test fixtures (TestModel, FunctionModel, provider error mapping).
 ---
 
 # AI Agent Patterns
