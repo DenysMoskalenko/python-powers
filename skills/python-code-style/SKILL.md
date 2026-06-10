@@ -127,7 +127,7 @@ Code should be readable without comments. Achieve this through:
 - Workarounds: what's being worked around and why
 
 ```python
-include_exception_handlers(_app)
+include_exception_handlers(_app)  # registered last so handlers wrap all routers and middleware
 ```
 
 ## Break Down Complexity
@@ -217,7 +217,7 @@ Non-negotiable defaults, priority order:
 
 Use the latest language features. Python 3.13+ is the target.
 
-- `uuid.uuid7()` over `uuid.uuid4()` when available (ordered, better for DB indexes)
+- `uuid.uuid7()` over `uuid.uuid4()` when available (Python 3.14+; ordered, better for DB indexes)
 - f-strings for all string formatting
 - `match` statements when they improve readability over `if/elif`
 - `pathlib.Path` over `os.path`

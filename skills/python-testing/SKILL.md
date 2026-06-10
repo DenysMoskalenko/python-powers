@@ -1,6 +1,6 @@
 ---
 name: python-testing
-description: Use when writing, reviewing, or planning tests for a FastAPI service — API-level test philosophy, polyfactory data generation, test organization, helper patterns, assertion patterns, FastAPI dependency overrides, and coverage requirements. For PostgreSQL container/fixture setup see `postgres-database`; for pydantic-ai test mocking see `ai-agents`.
+description: Use when writing, reviewing, or planning tests for a FastAPI service, or stabilizing flaky tests — API-level test philosophy, polyfactory data generation, test organization, helper patterns, assertion patterns, FastAPI dependency overrides, and coverage requirements. For PostgreSQL container/fixture setup see `postgres-database`; for pydantic-ai test mocking see `ai-agents`.
 ---
 
 # Python FastAPI Testing Patterns

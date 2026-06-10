@@ -2,6 +2,19 @@
 
 Spot-check scenarios for each skill in this repository. Not runnable tests — use them manually when editing a skill to confirm the change still produces the expected behavior, or as QA prompts for a fresh agent session.
 
+## Contents
+
+- [Format](#format)
+- [How to use](#how-to-use)
+- [python-code-style](#python-code-style)
+- [python-tooling](#python-tooling)
+- [python-testing](#python-testing)
+- [fastapi-service](#fastapi-service)
+- [postgres-database](#postgres-database)
+- [ai-agents](#ai-agents)
+- [skill-writer](#skill-writer)
+- [project-scaffolding](#project-scaffolding)
+
 ## Format
 
 Every scenario is structured as:
@@ -28,6 +41,24 @@ Guidelines for writing scenarios:
 4. **Aim for 3-4 scenarios per skill** — one success-path scenario plus 2-3 scenarios exercising the skill's core rules.
 5. **Update scenarios when editing a skill.** If a skill change would break a scenario, either adjust the change or justify updating the scenario in the diff.
 
+### Triggering blocks
+
+Each skill section also starts with a `### Triggering` block that tests discovery — does the right skill load for a prompt? — separate from the behavior evals above, which test what the already-loaded skill drives:
+
+```markdown
+### Triggering
+
+**Should load**:
+- "<realistic prompt — include casual phrasing and pasted error text>"
+
+**Should not load**:
+- "<near-miss prompt>" → `<owning-skill>`
+```
+
+1. Include at least one should-load prompt with no skill-name keywords (casual phrasing), and one pasted error message where the skill owns error diagnosis.
+2. Should-not-load prompts are plausible near-misses owned by a sibling — always name the owner.
+3. Trigger scenarios exercise only the frontmatter `description`; whenever a description changes, re-check this block.
+
 ## How to use
 
 - **Before** editing a skill, read the scenarios below for that skill to understand what it was written to enable.
@@ -37,6 +68,18 @@ Guidelines for writing scenarios:
 ---
 
 ## python-code-style
+
+### Triggering
+
+**Should load**:
+- "Refactor this service, it's gotten messy" (any Python code change)
+- "Review this module for code quality"
+- "Is `dict[str, Any]` fine for this payload?"
+- "Write a function that merges these two configs"
+
+**Should not load**:
+- "Change the ruff config to 120-char lines" → `python-tooling` (no application code is written)
+- "Write the README for this service" → no skill (prose, not Python code)
 
 ### Eval 1 — Reject `Any` and raw `dict`
 
@@ -103,6 +146,20 @@ Guidelines for writing scenarios:
 
 ## python-tooling
 
+### Triggering
+
+**Should load**:
+- "Add structlog to the project"
+- "Set up pre-commit for this repo"
+- "pytest prints a `DeprecationWarning` from testcontainers — what do we do with it?"
+- "Replace black and isort with ruff"
+- "What should CI run for lint and tests?"
+
+**Should not load**:
+- "Create a brand-new FastAPI service with tests and CI" → `project-scaffolding` (greenfield owns the whole baseline)
+- "Write tests for the authors endpoint" → `python-testing`
+- "My test suite needs a Postgres container" → `postgres-database`
+
 ### Eval 1 — Adding a dependency
 
 **Prompt**: "Add `structlog` to the project."
@@ -156,6 +213,19 @@ Guidelines for writing scenarios:
 
 ## python-testing
 
+### Triggering
+
+**Should load**:
+- "Write tests for the new authors endpoint"
+- "This test fails every third run — make it stable" (flaky)
+- "Add a factory for the `BookCreate` schema"
+- "How do I override `get_settings` in one test?"
+
+**Should not load**:
+- "Set up the testcontainers Postgres fixture" → `postgres-database`
+- "Mock the LLM so agent tests don't hit the provider" → `ai-agents`
+- "Change the pytest config in `pyproject.toml`" → `python-tooling`
+
 ### Eval 1 — API test, not unit test
 
 **Prompt**: "Write a test that creates an author and verifies it returns 201."
@@ -194,6 +264,19 @@ Guidelines for writing scenarios:
 ---
 
 ## fastapi-service
+
+### Triggering
+
+**Should load**:
+- "Add `GET /v1/authors/{id}` returning 404 when missing"
+- "Where does validation for author creation belong?"
+- "Add a new setting for the webhook secret"
+- "Design request/response schemas for the orders feature"
+
+**Should not load**:
+- "Add a `BookModel` with a foreign key to authors" → `postgres-database`
+- "Add a new dependency and tweak the ruff config" → `python-tooling`
+- "Start a brand-new orders service" → `project-scaffolding`
 
 ### Eval 1 — New CRUD endpoint
 
@@ -252,6 +335,19 @@ Guidelines for writing scenarios:
 ---
 
 ## postgres-database
+
+### Triggering
+
+**Should load**:
+- "Add a `BookModel` with `title`, `author_id` FK, timestamps"
+- "Generate a migration for the new column"
+- "I'm getting `sqlalchemy.exc.MissingGreenlet` when the response serializes"
+- "`InvalidRequestError: 'BookModel.tags' is not available due to lazy='raise'`"
+- "The books list endpoint fires dozens of queries (N+1)"
+
+**Should not load**:
+- "Add the route and schemas for books" → `fastapi-service`
+- "Write the HTTP-level test for the books list" → `python-testing`
 
 ### Eval 1 — New model
 
@@ -369,6 +465,18 @@ Guidelines for writing scenarios:
 
 ## ai-agents
 
+### Triggering
+
+**Should load**:
+- "Add an AI assistant endpoint that answers questions about our catalog"
+- "The agent's tool needs access to the orders service"
+- "Test the assistant endpoint without calling the real model"
+- "Bedrock throttling should come back as HTTP 429"
+
+**Should not load**:
+- "Add a plain CRUD endpoint for authors" → `fastapi-service`
+- "Paginate the books list" → `postgres-database`
+
 ### Eval 1 — New agent
 
 **Prompt**: "Define a read-only catalog assistant agent with two tools: count_items, list_items."
@@ -434,6 +542,10 @@ Guidelines for writing scenarios:
 ---
 
 ## skill-writer
+
+### Triggering
+
+Not applicable — `skill-writer` sets `disable-model-invocation: true` (and `allow_implicit_invocation: false` for Codex), so its description is never used for automatic routing. Agents reach it through the explicit `AGENTS.md` instruction or direct user invocation.
 
 ### Eval 1 — Refuse out-of-scope request
 
@@ -611,6 +723,17 @@ Review it."
 ---
 
 ## project-scaffolding
+
+### Triggering
+
+**Should load**:
+- "Create an app that serves a catalog of books" (no existing project)
+- "Spin up a tiny webhook receiver service, nothing fancy"
+- "Bootstrap a fresh repo for the analytics API"
+
+**Should not load**:
+- "Add `GET /v1/books/{id}` to my service" → `fastapi-service`
+- "Add CI to this existing project" → `python-tooling`
 
 ### Eval 1 — Greenfield: infer and scaffold
 

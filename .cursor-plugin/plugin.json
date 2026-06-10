@@ -1,7 +1,7 @@
 {
   "name": "python-powers",
   "displayName": "Python Powers",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Reusable Python, FastAPI, PostgreSQL, testing, tooling, project scaffolding, and AI-agent engineering skills.",
   "author": {
     "name": "Denys Moskalenko",

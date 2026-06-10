@@ -1,6 +1,6 @@
 ---
 name: postgres-database
-description: Use when working with PostgreSQL via SQLAlchemy 2.0 async and Alembic — defining models, writing service queries (CRUD, pagination, filtering), generating or debugging migrations, or setting up testcontainers-based database isolation in tests.
+description: Use when working with PostgreSQL via SQLAlchemy 2.0 async and Alembic — defining models, writing service queries (CRUD, pagination, filtering), generating or debugging migrations, setting up testcontainers-based database isolation in tests, or diagnosing `MissingGreenlet`, `lazy='raise'` / `InvalidRequestError`, or N+1 query problems.
 ---
 
 # PostgreSQL Database Patterns
@@ -110,7 +110,7 @@ class AuthorModel(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
 ```
 
-If your PostgreSQL exposes native `uuidv7()` (PG 17+ or the `pg_uuidv7` extension), prefer generating it in the database via `server_default`; otherwise generate in Python with `uuid.uuid7()`.
+If your PostgreSQL exposes native `uuidv7()` (PG 17+ or the `pg_uuidv7` extension), prefer generating it in the database via `server_default`; otherwise generate in Python with `uuid.uuid7()` (stdlib since Python 3.14).
 
 ## Usage
 

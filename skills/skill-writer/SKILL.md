@@ -204,7 +204,7 @@ Follow each step in order. Skipping steps produces the skill-drift problem that 
 
 6. **Split if over budget.** If `SKILL.md` exceeds 300 lines, move the largest cohesive section (commonly *testing*, *providers*, or *advanced patterns*) into `reference/<topic>.md`. Leave a one-line pointer: "See `reference/<topic>.md` for…".
 
-7. **Write evaluation scenarios.** Add 3-4 scenarios to `reference/evaluation-scenarios.md` under a new `## <skill-name>` heading. Use the format (Prompt / Must produce / Must not produce) described in that file.
+7. **Write evaluation scenarios.** Add a `### Triggering` block (3-5 should-load prompts including casual phrasing or pasted errors, 2-3 near-miss should-not-load prompts naming the owning sibling) plus 3-4 behavior scenarios to `reference/evaluation-scenarios.md` under a new `## <skill-name>` heading. Use the formats described in that file.
 
 8. **Cross-reference.** Add a `**Related**:` line to the new SKILL.md listing skills that compose with it. Then audit every existing SKILL.md's `**Related**:` line and add the new skill where relevant (usually 1-3 additions).
 
@@ -219,7 +219,7 @@ Follow each step in order. Skipping steps produces the skill-drift problem that 
 
 3. **Apply minimal change.** Do not rewrite adjacent sections that are unrelated to the edit. Preserve surrounding structure, formatting, and terminology.
 
-4. **Re-verify against evaluation scenarios.** Read the `## <skill-name>` section of `reference/evaluation-scenarios.md`. If your change would cause any scenario to fail, either adjust your change or update the scenario with a clear reason documented in the commit/diff.
+4. **Re-verify against evaluation scenarios.** Read the `## <skill-name>` section of `reference/evaluation-scenarios.md`. If your change would cause any scenario to fail, either adjust your change or update the scenario with a clear reason documented in the commit/diff. If you changed the frontmatter `description`, re-check the skill's `### Triggering` block.
 
 5. **Stage in git.** `git add skills/<name>/SKILL.md` plus any reference file you touched.
 
