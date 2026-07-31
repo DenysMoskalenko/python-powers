@@ -120,7 +120,14 @@ class AuthorService:
 Key patterns:
 - Domain exceptions (`NotFoundError`, `AlreadyExistError`) — never `HTTPException` in services
 - Request-scoped services that receive `get_session` do not call `commit()` or `rollback()`; the session provider owns that transaction boundary
-- Logging for non-critical situations (e.g., delete of non-existent entity)
+- Logging for non-critical situations (e.g., delete of non-existent entity). Nest custom fields under `extra={'extra': {...}}` so structured JSON formatters flatten them onto the log record without colliding with reserved `LogRecord` attributes:
+
+```python
+_logger.info(
+    f'Author with id={author_id} not found but was requested for deletion',
+    extra={'extra': {'author_id': author_id}},
+)
+```
 
 ## Schemas
 
