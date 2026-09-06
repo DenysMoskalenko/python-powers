@@ -1,269 +1,191 @@
 ---
 name: python-code-style
-description: Use when writing, reviewing, or refactoring Python 3.13+ code — type hints, code density, model-first data design, naming, dependency injection, early returns, fail-fast discipline, and architectural principles (KISS, YAGNI, SRP, DRY). Does not cover framework patterns, tool configuration, or test layout — those are owned by the matching domain skill.
+description: Use when writing, reviewing, or refactoring Python 3.13+ application or library code for readability or structure — type hints and PEP 695 aliases, model-first data design, naming conventions, dependency injection, early returns, fail-fast discipline, and architecture principles (KISS, YAGNI, SRP, DRY). For ruff and formatter configuration see `python-tooling`.
 ---
 
 # Python Code Style
 
-Rules for writing production-quality Python. Every rule here reflects a deliberate choice — follow them unless you have a specific, stated reason not to. Prerequisite for the domain skills (`fastapi-service`, `postgres-database`, `ai-agents`), which assume these rules are in effect and do not re-state them.
+House rules for production Python: how to type it, how to shape data, how to name things, and which default wins when two designs both read well. Where a rule is a house default rather than an invariant, the sentence names the case for departing from it. An explicit instruction from the user or the project (`AGENTS.md`, `pyproject.toml`, existing code) overrides any house default here; keep the invariants that still apply, follow the instruction for the rest, and name the default you departed from.
 
 > Requires Python 3.13+.
-> Examples use `app/` as the top-level package. Substitute your package name if different.
+> Examples use `app/` as the top-level package and `app/domains/<feature>/` for feature modules. Substitute your names if different.
 
 **Related**: `python-tooling`, `python-testing`, `fastapi-service`, `postgres-database`, `ai-agents`, `project-scaffolding`.
 
 ## Type Hints
 
-Type every public function, method, and class attribute. Types are documentation that the toolchain can verify.
+Type every public function, method, and class attribute; annotations are the documentation the type checker can verify.
 
-**Modern syntax only** (Python 3.13+) — use builtin generics (`list[int]`, `dict[str, int]`, `tuple[int, ...]`) and union syntax (`str | None`, `str | int`). Never import `List`, `Dict`, `Optional`, `Union`, `Tuple` from `typing`. Use `typing` only for types that have no builtin equivalent: `Annotated`, `TypeAlias`, `Literal`, `TypeVar`, `Protocol`, `TypedDict`, `Unpack`, `Generator`, `AsyncGenerator`, `TYPE_CHECKING`.
-
-**Never use `Any`** unless the value is genuinely unconstrained. If you reach for `Any` because you don't know the type, stop and find it. `Any` disables type checking for everything it touches.
-
-**Never use `object`** in type hints or code. If you think you need it, the actual type is either a protocol, a base class, or a generic.
-
-```python
-from typing import Annotated, Literal, TypeAlias
-
-SortingOrder: TypeAlias = Literal['asc', 'desc']
-
-class AuthorService:
-    def __init__(self, session: Annotated[AsyncSession, Depends(get_session)]) -> None:
-        self._session = session
-
-    async def get_author_by_id(self, author_id: int) -> Author:
-        ...
-```
-
-## Code Density
-
-Prefer fewer lines when the result is equally readable. Don't split into 3 lines what fits cleanly on 1. Let ruff handle line breaks — write the compact version and the formatter will split it if it exceeds the line length.
-
-Never leave trailing whitespace. Ruff and pre-commit should remove it automatically, but don't introduce formatting noise on purpose.
-
-```python
-return Author.model_validate(author)
-
-result = Author.model_validate(author)
-return result
-```
-
-This does not mean "cram everything onto one line." Readability wins. But don't add vertical space just because you can.
+- Builtin generics and union syntax: `list[int]`, `dict[str, int]`, `str | None`. The `typing` spellings `List`, `Dict`, and `Tuple` are deprecated aliases of the builtins; `Optional` and `Union` are not deprecated, but ruff's `UP007` rewrites them to the operator form.
+- PEP 695 syntax for aliases and generics — `type SortingOrder = Literal['asc', 'desc']`, `def first[ItemT](items: Sequence[ItemT]) -> ItemT | None` — rather than `TypeAlias`, which is deprecated, or a module-level `TypeVar`.
+- `collections.abc` for `Callable`, `Sequence`, `Mapping`, `Iterable`, `Generator`, and `AsyncGenerator`; `typing` for `Annotated`, `Literal`, `Protocol`, `TypedDict`, `Self`, `Unpack`, and `TYPE_CHECKING`. Ask parameters for the least you need (`Sequence[str]`, `Mapping[str, int]` when you only read them) and return the concrete type (`list[str]`).
+- `Any` belongs at an untyped third-party boundary and nowhere else; narrow it on the next line, because inside your own code the type exists and can be found.
+- `object` is the correct hint for a value you only pass through or must narrow before use — `__eq__(self, other: object)`, a logging sink, a cache key — and unlike `Any` it leaves type checking switched on. Do not use it to avoid modelling an interface you already know; that case wants a `Protocol` or a type parameter.
 
 ## Model-First Data
 
-Always use a data model (pydantic `BaseModel`, `dataclass`, `attrs`, `NamedTuple`, `TypedDict`) for structured data. Never pass raw `dict` when the shape is known.
+Structured data travels as a model rather than a raw `dict` — a raw mapping only when the keys are unknown at design time, such as user-supplied metadata — so its shape is declared once and checked everywhere it is used.
 
-Raw `dict` is acceptable only for genuinely dynamic/generic mappings — e.g., a function that accepts arbitrary key-value config.
+- Pydantic `BaseModel` at every boundary — HTTP payloads, external API responses, configuration, anything crossing a process edge — so validation and serialization live in the same declaration.
+- `@dataclass(frozen=True, slots=True, kw_only=True)` is the house default for internal value objects that need no validation: immutable, cheap, and keyword-only, so a new field cannot silently absorb a positional argument. Drop `frozen=True` for an object that is genuinely mutated in place.
 
 ```python
-class AuthorCreate(BaseModel):
-    first_name: str = Field(min_length=1, max_length=64)
-    last_name: str = Field(min_length=1, max_length=64)
+from dataclasses import dataclass
+from decimal import Decimal
+from enum import StrEnum
+
+from pydantic import BaseModel, Field
+
+
+class BookFormat(StrEnum):
+    HARDCOVER = 'hardcover'
+    PAPERBACK = 'paperback'
+    EBOOK = 'ebook'
+
+
+class BookCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    price: Decimal = Field(gt=0)
+    book_format: BookFormat
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ShippingQuote:
+    carrier: str
+    cost: Decimal
 ```
 
 ## Enumerate Known Values
 
-When a value comes from a predefined set, represent it as `StrEnum` or `Literal` — never a bare `str`. This applies equally to internal constants and external contracts. If a third-party API defines an enum in its schema, mirror it as a typed enum in yours.
+A value drawn from a fixed set is typed as that set, not as `str` — including a set defined by a third party, which you mirror as your own enum instead of passing their strings around. Use `Literal` when the values are local to one field or alias, and `StrEnum` (as `BookFormat` above) when they are reused across modules, iterated over, or more than about three. A set that changes without a change on your side — provider model ids, regions, SKUs from an external catalogue — is not fixed: keep it a validated `str` and let configuration carry the value.
 
-Decision rule:
+## Naming Conventions
 
-```text
-Small, local, tied to one field or TypeAlias?           → Literal
-Reused across modules, needs iteration, or > 3 values?  → StrEnum
-```
+The domain skills assume these names, so keep them even in a module that holds only one of each.
 
-```python
-from enum import StrEnum
-from typing import Literal, TypeAlias
+- `<Entity>Model` for SQLAlchemy classes (`AuthorModel`), which leaves the bare `<Entity>` name for the pydantic schema callers see.
+- `<Entity>`, `<Entity>Create`, and `<Entity>Patch` for schemas, with `_<Entity>Base` as the module-private base holding the shared fields. `<Entity>Update` is reserved for a full-replacement PUT body, which most endpoints never have.
+- `*Error` for domain exceptions (`NotFoundError`, `InvalidPriceError`), all subclassing one base per package.
+- `from logging import getLogger` at the top of the module, then `_logger = getLogger(__name__)` below the imports. Log messages are f-strings like the rest of the code; structured fields go under `extra={'extra': {...}}`, which `fastapi-service` explains.
+- A leading `_` marks anything private to its module or class: helpers, attributes, base classes; `_validate_*` raises when an invariant is broken, `_apply_*` transforms and returns. Names say what the value is: `deleted_author_id`, not `result`.
 
-class AIModelName(StrEnum):
-    GPT_5_4 = 'gpt-5.4'
-    SONNET_4_6 = 'sonnet-4.6'
+## Dependency Injection and Class Layout
 
-SortingOrder: TypeAlias = Literal['asc', 'desc']
-```
+A class takes its collaborators as constructor parameters and stores them; it never builds one itself, because a caller who cannot substitute a collaborator cannot test or reconfigure the class. Anything that varies by environment or by test is a collaborator: a clock, an HTTP client, storage, a source of randomness. Framework DI (`Depends()` in FastAPI, see `fastapi-service`) is the same rule written in the framework's syntax.
 
-## Dependency Injection
-
-Inject dependencies via constructor parameters or framework DI (`Depends()`). Never instantiate collaborators inside a class. This applies broadly, not just to FastAPI.
+Order the body `__init__`, public methods in the order a caller meets them, then private helpers — a reader needs the interface before the machinery, so `@staticmethod` helpers sit with the other private methods rather than at the top.
 
 ```python
-class AuthorService:
-    def __init__(self, session: Annotated[AsyncSession, Depends(get_session)]) -> None:
-        self._session = session
+from collections.abc import Callable, Sequence
+from datetime import datetime
+from typing import Protocol
+
+
+class ReportStorage(Protocol):
+    def rows(self, report_id: int) -> Sequence[str]: ...
+
+
+class ReportService:
+    def __init__(self, storage: ReportStorage, clock: Callable[[], datetime]) -> None:
+        self._storage = storage
+        self._clock = clock
+
+    def render(self, report_id: int) -> str:
+        rows = self._apply_redactions(self._storage.rows(report_id))
+        return f'{self._clock().isoformat()}: {len(rows)} rows'
+
+    def _apply_redactions(self, rows: Sequence[str]) -> list[str]:
+        return [row for row in rows if not row.startswith('secret:')]
 ```
 
-## Library-First
+## Fail Fast
 
-Before writing custom code, search for an existing library that solves the problem. Evaluate by: maintenance activity, community size, API fit.
+Validate at the boundary — route schema, constructor, factory — so everything behind it can trust its inputs instead of re-checking them. When an invariant breaks, raise on the spot.
 
-Custom code is justified only when:
-- The logic is domain-specific business rules unique to your application
-- Performance-critical paths need control that libraries don't provide
-- Security-sensitive code requires full auditability
-- No library exists after thorough evaluation
-
-When adding a library, always use the latest version. Never guess version numbers.
-
-## No Utils Modules
-
-Never create `utils.py`, `helpers.py`, `common.py`, or `shared.py`. These become dumping grounds that grow indefinitely with unrelated functions.
-
-Every function belongs somewhere specific — in the service it supports, in a shared `core/` module, or colocated with the feature. If you can't find a home for a function, that's a design signal — rethink the abstraction.
-
-## Self-Documenting Code
-
-Code should be readable without comments. Achieve this through:
-- Descriptive function names: `_validate_author_unique` not `_check`
-- Descriptive variable names: `deleted_author_id` not `result`
-- Small functions with single purpose
-
-**Don't comment the obvious.** Never write `# Check if author exists` above `if author is None`. The code says that already.
-
-**Do comment the non-obvious.** Explain *why* when the reason isn't clear from context:
-- Tradeoffs: why this approach over alternatives
-- Constraints: external requirements that shaped the code
-- Workarounds: what's being worked around and why
+- Return or raise early on the invalid or trivial case, so the main path continues unindented at the top level of the function. Drop the `else` after a branch that already returned or raised; it only indents the rest of the body.
+- Raise a domain error class (one base per package, `app/core/exceptions.py` in a service, translated to HTTP by `fastapi-service`) rather than a bare `ValueError`, so callers and handlers can tell causes apart.
+- Chain exceptions with `raise ... from exc`; the original traceback is usually the useful half. Prefer raising over returning `None` or a sentinel, which spreads the check to every caller.
+- Catch the specific exception you can actually handle. `except Exception: pass` turns a bug into wrong data with no trace of where it started.
+- Keep secrets out of logs and exception messages: `SecretStr` in settings, and mask account or card numbers before formatting them.
 
 ```python
-include_exception_handlers(_app)  # registered last so handlers wrap all routers and middleware
+from decimal import Decimal, InvalidOperation
+
+from app.core.exceptions import BaseServiceError
+
+
+class InvalidPriceError(BaseServiceError):
+    pass
+
+
+def parse_price(raw: str) -> Decimal:
+    try:
+        price = Decimal(raw)
+    except InvalidOperation as exc:
+        raise InvalidPriceError(f'Price is not a number: {raw!r}') from exc
+    if price <= 0:
+        raise InvalidPriceError(f'Price must be positive, got {price}')
+    return price
 ```
-
-## Break Down Complexity
-
-When logic starts branching, extracting, or repeating, split it into smaller reusable functions. Prefer two or three focused functions over one long method with mixed concerns.
-
-Extract helpers when they:
-- Hide a clear sub-step (`_apply_filters`, `_validate_author_unique`, `_build_response`)
-- Remove repeated conditionals or transformations
-- Make the public method read like a short sequence of business steps
-
-Do not extract tiny wrappers with no semantic value. The goal is simpler code, not more files or more indirection.
-
-## Class Layout
-
-Public methods first, private methods after. This puts the class interface — what callers interact with — at the top where it's immediately visible.
-
-```python
-class AuthorService:
-    async def get_author_by_id(self, author_id: int) -> Author: ...
-    async def list_authors(self, ...) -> Page[Author]: ...
-    async def create_author(self, creation: AuthorCreate) -> Author: ...
-    async def update_author(self, author_id: int, updates: AuthorUpdate) -> Author: ...
-    async def delete_author_by_id(self, author_id: int) -> None: ...
-
-    def _apply_filters(self, query: Select, filters: AuthorListFilters) -> Select: ...
-    @staticmethod
-    def _apply_sorting(query: Select, sorting: AuthorListSorting) -> Select: ...
-    async def _validate_author_unique(self, ...) -> None: ...
-```
-
-## Early Returns
-
-Prefer early returns over nested conditions. Exit the function as soon as you know the answer.
-
-```python
-async def get_author_by_id(self, author_id: int) -> Author:  # Good
-    author = await self._session.scalar(query)
-    if author is None:
-        raise NotFoundError(f'Author(id={author_id}) not found')
-    return Author.model_validate(author)
-
-async def get_author_by_id(self, author_id: int) -> Author:  # Bad
-    author = await self._session.scalar(query)
-    if author is not None:
-        return Author.model_validate(author)
-    else:
-        raise NotFoundError(f'Author(id={author_id}) not found')
-```
-
-## Fail Fast, Fail Loud
-
-Validate at boundaries. Services assume their inputs are valid; the boundary (route schema, factory, constructor) enforces that.
-
-- Raise specific domain exceptions immediately when invariants are violated
-- Never swallow errors — `except Exception: pass` is a bug hiding in plain sight
-- Prefer raising over returning `None` or a sentinel to signal failure
-- Never log secrets — use `SecretStr`, mask card numbers, strip tokens before logging
-- Use `chain from` (`raise DomainError(...) from exc`) to preserve the original cause
-
-```python
-if not account_number.isdigit() or len(account_number) != 16:
-    raise ValueError('Invalid account number')
-
-try:
-    result = await self._provider.charge(amount, account_number)
-except ProviderError as exc:
-    raise PaymentFailedError(f'Charge failed: {exc}') from exc
-```
-
-Fail fast pairs with model-first: Pydantic/dataclass validation at the boundary makes the body of your function trust its inputs.
-
-## Architecture Principles
-
-Non-negotiable defaults, priority order:
-
-1. **KISS** — simple, readable solutions over clever ones
-2. **YAGNI** — don't build for hypothetical future needs
-3. **Single Responsibility** — one class, one job, one reason to change
-4. **DRY** — one source of truth, but don't DRY prematurely (wait for the third repetition)
-5. **Encapsulation** — hide internal state (`_` prefix), expose behavior
-6. **Loose Coupling** — depend on abstractions, inject dependencies
-7. **Open/Closed** — extend via new classes or composition, not editing existing code
-8. **Fail Fast** — validate at boundaries, never swallow errors (see section above)
-
-## Modern Python
-
-Use the latest language features. Python 3.13+ is the target.
-
-- `uuid.uuid7()` over `uuid.uuid4()` when available (Python 3.14+; ordered, better for DB indexes)
-- f-strings for all string formatting
-- `match` statements when they improve readability over `if/elif`
-- `pathlib.Path` over `os.path`
-- `datetime.now(UTC)` over `datetime.utcnow()`
 
 ## Reuse Before Creating
 
-Before writing a new function, check if an existing one does nearly the same thing. If it does, extend the existing function slightly rather than creating a near-duplicate.
+When you need behaviour that does not exist yet, take the first option that fits:
 
-Excessive patterns become a maintenance burden. Understand the project's existing style and follow it rather than introducing parallel approaches.
+1. Code already in this project — extend it slightly instead of writing a near-duplicate.
+2. The standard library.
+3. A dependency the project already installs.
+4. The smallest local implementation that covers the case you have.
+5. A new maintained dependency, when the local implementation would be large or risky — parsing, crypto, protocols; let uv resolve the version, never guess one, and say in your report that the lock file changed.
 
-## Don't Bend Production Code for One-Off Needs
+Business rules unique to the domain are always local code. Prefer the smallest coherent change to what exists, and introduce an extension seam — a protocol, a strategy parameter, a subclass hook — only when a second implementation or a recurring variation already exists, because one implementation behind an interface costs every reader and pays nobody back. A `Protocol` that names the interface a constructor parameter needs (`ReportStorage` above) is not a speculative seam; the ban is on variants nobody asked for.
 
-Never modify core application modules to support a one-time script, migration, or operational task. Write self-contained logic inside the script instead.
+Do not reshape production modules to serve a one-off script, migration, or operational task; keep that logic inside the script. A new parameter or a changed signature in shared code needs a recurring application need behind it.
 
-Adding parameters, changing signatures, or introducing abstractions in shared code must be justified by a recurring application need — not a single ad-hoc use case. Long-lived production code is stable infrastructure; protect it.
+## No Utils Modules
+
+Do not add `utils.py`, `helpers.py`, `common.py`, or `shared.py`. They collect unrelated functions and nobody can predict what is inside them. Every function has a real home: the service that uses it, the module that owns its type, or a module named after the concept (`app/core/schemas.py`). When no home fits, the abstraction is wrong — fix that rather than opening a drawer. In a project that already has such a drawer, add to it only when the function belongs with its neighbours; do not create a second catch-all and do not relocate the existing one unasked.
+
+## Helpers and Comments
+
+Extract a helper when it hides a named sub-step or removes a repeated transformation, so the public method reads as a short sequence of business steps. Do not extract a wrapper that only forwards its arguments; it adds a hop and hides nothing.
+
+Comment the why, not the what. `# Check if the author exists` above `if author is None` ages into noise, while `# The vendor rejects batches over 50 ids, so chunk even when the caller passes fewer` saves the next reader a git-blame session. Tradeoffs, external constraints, and workarounds earn a line; restating the code does not.
+
+## Architecture Principles
+
+When two designs both work, this order decides:
+
+1. **KISS** — the simplest thing that solves the problem in front of you.
+2. **YAGNI** — no code for a requirement nobody has asked for.
+3. **Single responsibility** — one class, one job, one reason to change.
+4. **DRY** — one source of truth, applied on the third repetition; two similar blocks are cheaper than the wrong abstraction.
+5. **Encapsulation** — state hidden behind `_`, behaviour exposed.
+6. **Loose coupling** — depend on the narrow interface you use, and take it as a parameter.
 
 ## Follow Project Style
 
-When joining an existing codebase, read how services, routes, and tests are written. Match the existing patterns — function signatures, naming, file organization, error handling approach.
+Before changing existing code, read the enclosing function, class, and module, plus the call sites and tests that depend on it. A quoted line or a pasted snippet does not carry enough context to tell whether the change is correct; when the line is already right in its surroundings, say so and change nothing.
 
-Before changing existing code, read the enclosing function, class, module, and relevant call sites/tests. Do not patch from a quoted line or isolated snippet when surrounding context can change the meaning.
+One way of doing things beats two better ways. Match the file you are in — signatures, naming, error handling, layout — instead of introducing a parallel style for the code you happen to write.
 
-Introducing a different style for "your" code creates inconsistency that multiplies maintenance cost. One way of doing things is better than two "better" ways.
+## Common mistakes
 
-## Red Flags — STOP
-
-These mean you are about to violate a rule above. Stop and apply the named rule:
-
-| About to… | Rule to apply |
-|---|---|
-| Type `Any` because "the type is complex" | Type Hints — find the real type |
-| Type `object` anywhere | Type Hints — use a protocol or generic |
-| Create `utils.py` / `helpers.py` / `common.py` | No Utils Modules |
-| Use `dict[str, Any]` for a known shape | Model-First Data |
-| Pass a bare `str` where values come from a fixed set | Enumerate Known Values |
-| Instantiate a collaborator inside a class | Dependency Injection |
-| Write `except Exception: pass` | Fail Fast, Fail Loud |
-| Write a retry/cache/datetime helper by hand | Library-First |
-| Nest `if author is not None:` over two levels | Early Returns |
-| Add a comment that narrates what the next line does | Self-Documenting Code |
-| Put private methods before public methods | Class Layout |
-| Patch code from a quoted line or isolated snippet | Follow Project Style — inspect enclosing code and callers first |
+| Mistake | Do instead | Why |
+|---|---|---|
+| `dict[str, Any]` for a shape you know | A pydantic model, or a frozen dataclass for internal values | The shape is declared once and every call site is checked against it |
+| `Any` because the real type is awkward | The real type, or `object` narrowed with `isinstance` before use | `Any` disables checking for everything it touches; `object` leaves it on |
+| `Optional[str]`, `List[int]`, `TypeAlias` | `str \| None`, `list[int]`, `type Alias = ...` | `List`/`TypeAlias` are deprecated; `Optional` is the spelling `UP007` rewrites |
+| A new `utils.py` or `helpers.py` | The module that owns the concept, or `app/core/<concept>.py` | A named module stays findable; a catch-all grows without limit |
+| A bare `str` where the values come from a fixed set | `Literal` for one field, `StrEnum` when reused or iterated | Typos become type errors instead of runtime bugs |
+| Constructing a collaborator inside a class | Take it as a constructor parameter | A caller or a test cannot substitute what the class builds itself |
+| `except Exception: pass` | Catch the specific error and raise a domain error `from exc` | A silent except converts a bug into wrong data |
+| Patching a line quoted in the request without opening the file | Read the enclosing function and its call sites first | The quoted line is often correct and the real fault is elsewhere |
 
 ## Gotchas
 
-- `str | None` requires Python 3.10+ at runtime; you already target 3.13 — this is fine. The older `Optional[str]` form still works but is banned.
-- `StrEnum` members compare equal to their string value (`AIModelName.GPT_5_4 == 'gpt-5.4'` is `True`). Useful for JSON round-trips, occasionally surprising in asserts.
-- `TypeAdapter(list[X])` is the idiomatic way to validate a list of pydantic models.
+- `Sequence[str]` also matches a plain `str`, so a caller who passes one string type-checks and then iterates characters. Use `list[str]` where that would be a bug.
+- `@dataclass(slots=True)` returns a new class object, so zero-argument `super()` inside its methods raises `TypeError`, and a frozen dataclass cannot inherit from a non-frozen one. Keep slotted value objects free of inheritance.
+- `StrEnum` members compare equal to their string value (`BookFormat.EBOOK == 'ebook'` is `True`). Convenient for JSON round-trips, and occasionally the reason an assertion passes when it should not.
+- A `TYPE_CHECKING`-only import is safe in a SQLAlchemy `Mapped['OtherModel']` forward reference, which the declarative registry resolves, but not in a pydantic field annotation: pydantic evaluates annotations when the class is built, so the model stays incomplete until the name is imported for real or `model_rebuild()` runs where it exists.
+- `type Alias = ...` is evaluated lazily, so a forward reference inside one is fine, but code that inspects the alias at runtime needs `Alias.__value__` rather than the alias object.

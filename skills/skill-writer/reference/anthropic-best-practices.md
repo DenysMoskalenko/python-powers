@@ -1,75 +1,33 @@
-# Anthropic Skill Authoring Best Practices
+# Upstream Skill-Authoring Guidance and House Deviations
 
-Adapted for this repository from upstream Superpowers and Anthropic skill-authoring guidance.
+Facts from the Agent Skills specification, Anthropic's skill best-practices page, the Claude Code skills reference, and the Codex and Cursor skill docs, as checked on 2026-09-05. Load this when deciding what is a hard limit versus a house choice. Sources: https://agentskills.io/specification, https://agentskills.io/skill-creation/best-practices, https://agentskills.io/skill-creation/optimizing-descriptions, https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices, https://code.claude.com/docs/en/skills, https://learn.chatgpt.com/docs/build-skills, https://cursor.com/docs/skills.
 
-## Core principles
+## Limits every host enforces or assumes
 
-**Concise is key.** Assume the model is already capable. Add only repo-specific decisions, fragile procedures, or patterns the model would not reliably infer.
+| Item | Upstream | House |
+|---|---|---|
+| `name` | 1–64 chars, `a-z0-9-`, equals the folder name, no `claude`/`anthropic` | same |
+| `description` | required, ≤1,024 chars; Claude Code lists `description` + `when_to_use` truncated at 1,536 chars; Codex loads name + description under 2% of context or 8,000 chars total | 30–60 words, ≤400 chars, triggers first, then keywords |
+| `SKILL.md` size | under 500 lines and about 5,000 tokens; body loaded on activation | 300 lines, enforced by `evals/check_skills.py` |
+| References | one level deep, linked by relative path, loaded on demand; contents list when long | `reference/<topic>.md`, contents list above 100 lines |
+| Spec frontmatter | `name`, `description`, optional `license`, `compatibility`, `metadata`, experimental `allowed-tools` | plus `disable-model-invocation`, `paths`, `when_to_use` (Claude Code / Cursor); `> Requires` in the body instead of `compatibility` |
+| Host-only keys | Claude Code also honours `argument-hint`, `context`, `agent`, `model`, `effort`, `hooks`; claude.ai uploads reject unknown keys; Codex ignores them and reads `agents/openai.yaml` | not used |
 
-Before adding prose, ask:
+## Principles the house rules implement
 
-- Does this explain a non-obvious local convention?
-- Does it prevent a known failure mode?
-- Does it justify its token cost every time the skill loads?
+- "Claude is already very smart": include only what the agent would get wrong without it; ask per paragraph whether it justifies its token cost.
+- Degrees of freedom: heuristics where many approaches are valid; a template or example where one pattern is preferred; exact commands only for fragile sequences.
+- Description: what the skill does and when to use it, third person, concrete keywords, intent rather than implementation; agents consult skills only for tasks they cannot easily do alone, so one-step prompts may not trigger even a perfect description.
+- Gotchas are the highest-value content: concrete corrections to mistakes the agent actually made, kept in `SKILL.md`; add one each time an agent gets something wrong.
+- Tone: explain why instead of heavy-handed "MUST"; capitalized ALWAYS/NEVER is a warning sign; escalate wording only after an eval shows the calm sentence being skipped.
+- Time-sensitive facts age badly; use capability language and keep versions in one place.
+- One term per concept throughout a skill.
+- Evals first: scenarios per skill (counts in `SKILL.md`, Creating a skill step 4), a baseline without the skill, evidence-graded, run on every model the team uses; descriptions tuned with should-load and near-miss should-not-load prompts, several runs each.
+- `claude plugin validate <dir>` validates only `.claude-plugin/marketplace.json`; a `SKILL.md` with unparsable frontmatter still loads, with an empty description, so parse frontmatter separately (`evals/check_skills.py` here).
 
-**Set the right degree of freedom.**
+## Host behaviour worth knowing
 
-| Situation | Best format |
-|---|---|
-| Many valid approaches, context-dependent judgment | Short principles or heuristics |
-| Preferred pattern with context-specific variation | Pseudocode, compact example, or checklist |
-| Fragile sequence where mistakes are expensive | Exact command/script and strict ordering |
-
-## Progressive disclosure
-
-Keep `SKILL.md` as the trigger, workflow, and navigation surface. Move bulky material to `reference/` when it is over about 100 lines, used only in some tasks, or mostly examples/API detail.
-
-Rules:
-
-- Link every reference file directly from `SKILL.md`; nested references are easy to miss.
-- Keep each reference topic cohesive: providers, testing, migrations, examples, policies.
-- Do not duplicate the same rule in `SKILL.md` and `reference/`; pick one source of truth.
-- For long reference files, add a short contents list near the top.
-
-## Description quality
-
-The description decides whether the skill loads. It should contain trigger conditions, not a process recipe.
-
-Good descriptions:
-
-- Start with `Use when...`
-- Are third-person and concrete
-- Include keywords an agent or user would search for
-- Mention sibling skills only when confusion is plausible
-
-Bad descriptions:
-
-- Summarize steps from the body
-- Use first person
-- Add exclusions already implied by the name
-- Repeat the same trigger with `Use when...` and `Apply when...`
-
-The `description` is the ONLY frontmatter field the skill loader sees when deciding to
-load the skill. The body is read after the routing decision. A `## When to use` section
-in the body that paraphrases the description is therefore paid on every load and adds
-nothing — drop it. Keep an in-body trigger section only when it adds information the
-description cannot fit, such as explicit "Do not load for:" exclusions or sub-triggers
-too granular for the 30-55-word description budget.
-
-## Workflows and validation loops
-
-Use a workflow only when skipping or reordering steps would likely break the outcome. A good workflow has:
-
-- Clear entry condition
-- Ordered actions
-- Verification step
-- Failure recovery path
-
-For skill changes, use the local RED-GREEN-REFACTOR loop in `SKILL.md`: scenario first, minimal rule change, then re-check scenarios and line budget.
-
-## File hygiene
-
-- Do not add README, changelog, install guide, or extra meta-docs inside a skill.
-- Use scripts only for deterministic repeatable operations.
-- Use assets only when the skill consumes them to produce output.
-- Keep examples complete enough to adapt, but do not provide the same example in multiple languages.
+- `disable-model-invocation: true` removes the skill from Claude Code's listing, so the model cannot invoke it and `/name` is unreliable; Cursor hides plugin-delivered skills with the flag from its palette; Codex ignores the key and uses `policy.allow_implicit_invocation: false` in `agents/openai.yaml`.
+- `paths:` globs restrict auto-loading to work on matching files (Claude Code, Cursor); Codex has no equivalent.
+- Claude Code drops the descriptions of the least-invoked skills first when the listing exceeds about 1% of the context window; `/skill-doctor` reports per-skill cost and never-invoked skills.
+- Codex reads `AGENTS.md` root-to-leaf under 32 KiB; Claude Code reads `CLAUDE.md` (this repo symlinks it to `AGENTS.md`).

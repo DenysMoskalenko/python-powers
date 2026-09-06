@@ -7,12 +7,12 @@ This repository is the shared AI-assisted engineering playbook.
 The main artifact is the `skills/` tree:
 
 - `python-code-style` - Python 3.13+ architecture and style rules
-- `python-tooling` - uv, ruff, ty, pytest, pre-commit, and CI patterns
+- `python-tooling` - uv, ruff, ty, pytest, prek hooks, and CI patterns
 - `python-testing` - FastAPI testing patterns and fixtures
 - `fastapi-service` - FastAPI route, service, schema, config, and exception patterns
 - `postgres-database` - SQLAlchemy, PostgreSQL, Alembic, and database test patterns
 - `ai-agents` - pydantic-ai agent structure, providers, tools, routes, and tests
-- `project-scaffolding` - greenfield project generation from the BoilerplateBuilder template (new services only)
+- `project-scaffolding` - greenfield project generation from the BoilerplateBuilder template (new HTTP services only)
 - `skill-writer` - house rules for creating and editing skills in this repo
 
 ## If You Are an AI Agent
@@ -61,8 +61,8 @@ When editing `skills/<name>/SKILL.md`:
 - Prefer one excellent example over several mediocre examples.
 - Preserve comments and deliberately worded warnings unless the change makes them
   irrelevant.
-- Update `skills/skill-writer/reference/evaluation-scenarios.md` when a behavior change
-  changes what a good agent response should do.
+- Update `evals/cases.json` (and the human-readable spec in `evals/scenarios.md`) when a
+  behavior change changes what a good agent response should do.
 
 When adding a new skill:
 
@@ -71,7 +71,11 @@ When adding a new skill:
 - Add a folder at `skills/<kebab-name>/SKILL.md`; use `reference/` only for supporting
   material that would otherwise make the main file too long.
 - Update related-skill cross-references where they materially help discovery.
-- Inspect plugin manifests (`.codex-plugin/plugin.json`, `.cursor-plugin/plugin.json`)
+- Add its scenarios to `evals/scenarios.md` and trigger and behavior cases to `evals/cases.json`.
+- Add `skills/<name>/agents/openai.yaml` with `interface.display_name` and
+  `interface.short_description`; Codex reads it and `evals/check_skills.py` requires it.
+- Inspect the plugin manifests (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`,
+  `.codex-plugin/plugin.json`, `.cursor-plugin/plugin.json`, `.agents/plugins/marketplace.json`)
   and update their discoverability metadata when the skill changes the plugin's advertised
   scope. Keep `skills` paths valid, update `keywords`, Cursor `tags`, summaries, and
   starter prompts only when they should help users find or understand the plugin.
@@ -84,14 +88,22 @@ For every change:
 
 - Re-read the complete changed section after editing.
 - Verify links and local paths you touched exist.
-- Check frontmatter manually for valid YAML when touching a `SKILL.md`.
+- Run `uv run evals/check_skills.py` when touching a `SKILL.md`, a reference file, or a
+  manifest. It parses every frontmatter (one that fails to parse still loads, with an empty
+  description), and checks line budgets, links, code fences, `agents/openai.yaml`, and the
+  manifests.
+- Run `claude plugin validate .` when touching a manifest; it validates only
+  `.claude-plugin/marketplace.json`.
+- Run the eval cases for the touched skill when the owner asks for it (it spends API calls;
+  see `evals/README.md`); otherwise list the case names to run.
 - Report exactly what you changed and what you verified.
 
 For Python examples inside skills:
 
-- Keep examples compatible with Python 3.13+.
-- Follow the local `python-code-style` skill.
-- Prefer examples that are realistic enough to copy into a service with minimal edits.
+- Keep examples compatible with Python 3.13+ and current library releases.
+- Follow the local `python-code-style` skill; feature modules live in `app/domains/<feature>/`.
+- Prefer examples that are realistic enough to copy into a service with minimal edits, and
+  verify them in a project that passes its quality gate before pasting them into a skill.
 
 ## Pull Request Discipline
 

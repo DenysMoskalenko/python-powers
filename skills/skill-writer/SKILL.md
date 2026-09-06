@@ -1,284 +1,188 @@
 ---
 name: skill-writer
-description: Use when creating, editing, splitting, or reviewing `skills/<name>/SKILL.md` files in this repository, or when adding evaluation scenarios for those skills. Applies only to this repository's `skills/` tree; for foreign skill systems use that system's own authoring guide.
+description: Use when creating, editing, splitting, or reviewing a skill under this repository's `skills/<name>/`, or adding eval cases for one — folder layout, frontmatter, body skeleton, ownership boundaries, tone for current models, copy-ready examples, and the eval loop. Explicit-only; other skill systems have their own authoring guides.
 disable-model-invocation: true
 ---
 
 # Skill Writer (This Repository Only)
 
-Meta-skill for authoring skills in this repository's `skills/` folder. Captures the house style so future edits reproduce the existing look, scope, and quality without re-deriving conventions.
+Meta-skill for authoring skills in this repository's `skills/` folder. It records the decisions the existing skills follow so edits reproduce the same shape without re-deriving them. It applies only to `skills/<name>/` inside this repository; other skill systems (`~/.claude/skills`, `~/.codex/skills`, third-party plugins) have their own authoring guides.
 
-> Scope: applies ONLY to `skills/<name>/SKILL.md` inside this repository.
-> For other skill systems (`~/.cursor/skills/`, `~/.codex/skills/`, obra superpowers, etc.), refuse and point the user to that system's own authoring skill.
+This skill is explicit-only (`disable-model-invocation: true`), so hosts never load it on their own. `AGENTS.md` step 6 tells agents to read this file before touching a skill; that instruction is the trigger.
 
-**Related**: none — this meta-skill is used alone when authoring or editing other skills. It references the domain skills by name in the ownership table.
+**Related**: none — used alone; the ownership table below names the domain skills.
 
-## When to use
+Load `reference/anthropic-best-practices.md` when you need the upstream limits (name, description, size, frontmatter keys) or the host behaviour behind a rule below. Load `evals/scenarios.md` (repository root) when writing or updating eval cases.
 
-This skill is meta and prone to over-application. **Do not load** for:
-- Writing Python application code — use the domain skills (`python-code-style`, `fastapi-service`, etc.)
-- Authoring skills outside `skills/` (different conventions apply)
-- Non-skill documentation (README, AGENTS.md, plain notes)
+## Who reads a skill, and what that changes
 
-> Triggers live in the frontmatter `description`. This section exists only because the meta-skill needs explicit "do not load" guidance — most skills should not have a `## When to use` section at all (see [Body skeleton](#body-skeleton) below).
+Skills are loaded by current frontier coding agents in Claude Code, Codex and Cursor. Their vendors' current prompting guides agree on the points below, and the rules in this file follow from them:
+
+- They follow instructions literally and do not generalize scope on their own. Say "every `relationship()` in `app/infrastructure/db/models/`", not "relationships".
+- They over-comply with emphatic language. Anthropic's guidance for its current models: skills written for earlier models "are often too prescriptive … and can degrade output quality"; where you would have written "CRITICAL: you MUST", write "Use X when Y".
+- They reconcile contradictions at a cost (extra reasoning, or an early block on some models). Two skills must never state the same rule differently; one owner per rule.
+- They already know the libraries. A paragraph earns its tokens only if the agent would get it wrong without it: a house decision, a fragile sequence, or a gotcha.
+- Reasons generalize better than bans. Put the why in the same sentence as the rule when it is not obvious.
 
 ## House style
 
 ### Folder layout
 
 ```text
-skills/
-  <skill-name>/
-    SKILL.md              # required, discoverable
-    reference/            # optional; loaded only when SKILL.md points here
-      <topic>.md
+skills/<skill-name>/
+  SKILL.md              # required; loaded when the skill triggers
+  reference/<topic>.md  # optional; loaded only when SKILL.md points at it by path
+  agents/openai.yaml    # required; Codex display metadata (interface.display_name, interface.short_description)
+evals/                  # repo-level scenarios, runnable cases, runner, and static checker (see Evals)
 ```
 
-Skill name: lowercase, hyphens only, descriptive (`python-testing`, not `tests`).
+Skill name: lowercase, hyphens, matches the folder (`python-testing`, not `tests`).
 
 ### Frontmatter
 
 ```yaml
 ---
 name: <kebab-case-name>
-description: Use when <trigger 1>, <trigger 2>, or <trigger 3> — <concrete scope items separated by commas, written as keyword bait an agent would search for>. [Optional] For <adjacent topic> see `<sibling-skill>`.
+description: Use when <trigger 1>, <trigger 2>, or <trigger 3> — <concrete keywords users type>. [Optional] For <adjacent topic> see `<sibling-skill>`.
 ---
 ```
 
-Rules:
-- `name` — lowercase + hyphens, matches folder name
-- `description` — single-line YAML scalar, 30-55 words, well under the 1024-char ceiling
-- Description MUST start with "Use when…" and state **triggers**, not a workflow recipe
-- Description in **third person** only ("Use when…", not "I help you…")
-- Disambiguation clause is **optional** and earns its place only when:
-  - A sibling skill could plausibly be confused with this one (use a positive `For X see \`sibling-skill\`` pointer), or
-  - The skill is the broadest in its area and prone to over-application (use a "Does not cover X" exclusion)
-  - If the skill name + topics already exclude the topic, do NOT add a "Does not cover X" line — it is dead weight paid on every skill-discovery decision
-- Avoid pairing a "Use when…" sentence with an "Apply when…" sentence that just restates the same triggers
-- No `compatibility:` field — put `> Requires ...` in the body instead
-- No other frontmatter keys except platform invocation-control keys already used in this repo, such as `disable-model-invocation`
+- `description`: 30–60 words and under 400 characters; triggers first, then the keywords (Claude Code truncates the listing at 1,536 characters, Codex front-loads under an 8,000-character budget); third person; keywords and pasted-error strings an agent would search for; no ordered workflow steps. Add a sibling pointer only when a real prompt could plausibly land on the wrong skill ("For ruff and formatter configuration see `python-tooling`"); do not add a blanket "Does not cover …" sentence for what the name already implies.
+- Allowed keys: `name`, `description`, `disable-model-invocation`, `paths`, `when_to_use`, `metadata` (plus the spec's `license`/`compatibility`, which hosts accept but ignore). Anything else is host-specific and breaks portability. `> Requires …` stays in the body because all three hosts show the body at use time.
+- `disable-model-invocation: true` removes the skill from the host's listing entirely (Claude Code and Cursor); Codex needs the same intent in `agents/openai.yaml` as `policy.allow_implicit_invocation: false`. Keep the two in sync, and reference such a skill by file path in docs, not by slash command.
 
 ### Body skeleton
-
-Every `SKILL.md` follows this order. Sections in **bold** are mandatory.
 
 ```markdown
 # <Title>
 
-<One-paragraph overview — what this skill owns, 1-3 sentences>
+<One paragraph: what this skill owns, in 1–3 sentences.> An explicit instruction from the user or the project (`AGENTS.md`, `pyproject.toml`, existing code) overrides any house default here; keep the invariants that still apply, follow the instruction for the rest, and name the default you departed from.
 
 > Requires <python version>, <key libraries>.
-> Examples use `app/` as the top-level package. Substitute your package name if different.
+> Examples use `app/` as the top-level package and `app/domains/<feature>/` for feature modules. Substitute your names if different.
 
-**Related**: `<skill1>`, `<skill2>`, `<skill3>`.
+**Related**: `<skill1>`, `<skill2>`.
+[Optional one line:] For <adjacent topic> use `<sibling-skill>`.
 
-[Optional sibling pointer line:] For <adjacent topic> use `<sibling-skill>`. For <other adjacent topic> use `<other-sibling>`.
+## <domain sections>        <!-- at least two; one excellent example per pattern -->
 
-## When to use        <!-- OPTIONAL -- include ONLY if it adds value the description cannot -->
+## Common mistakes          <!-- recommended for domain and discipline skills -->
 
-<Use ONLY for "Do not load for:" exclusions, or for sub-triggers too granular for the
-30-55-word description budget. NEVER restate the description as a "Load this skill when:" bullet list -- the loader only sees the description, so duplicating it costs tokens on every load and adds nothing.>
+| Mistake | Do instead | Why |
+|---|---|---|
 
-## <domain sections>  <!-- MANDATORY: at least 2 -->
-
-<Content: workflow, patterns, one excellent code example per pattern>
-
-## Red Flags — STOP    <!-- MANDATORY for discipline skills; optional for technique skills -->
-
-| About to… | Rule to apply |
-|---|---|
-| <rationalization or mistake> | <named rule> |
-
-## Gotchas             <!-- MANDATORY -->
-
-- <non-obvious behavior, edge case, or common misunderstanding>
+## Gotchas                  <!-- required; the highest-value section -->
 ```
 
-### Discipline vs technique skills
+No `## When to use` section: the host routes on the description alone, so restating triggers in the body is paid on every load. Sub-triggers that do not fit the description go into `when_to_use` in the frontmatter.
 
-| Type | Definition | Red Flags section |
-|---|---|---|
-| **Discipline** | Encodes rules agents rationalize around under pressure (e.g., `python-code-style`, `python-testing`) | REQUIRED |
-| **Technique** | Teaches how to do a task with concrete steps (e.g., `python-tooling`) | OPTIONAL |
-| **Domain** | Framework / library patterns (e.g., `fastapi-service`, `postgres-database`, `ai-agents`) | REQUIRED |
+### Rule classes and tone
+
+- **Invariant** (breaks the architecture if violated): state plainly. "Services raise domain exceptions; exception handlers translate them to HTTP."
+- **House default** (a choice, valid alternatives exist): say so and name the escape hatch in the same sentence. "The house default is `selectinload` for collections; use `joinedload` for a to-one on a single-object fetch."
+- **Heuristic** (needs measurement): give the signal to check. "Profile before switching loaders on a hot list endpoint."
+
+Write in plain imperatives. No capitalized emphasis, no "STOP", no "never … no exceptions" unless the exception really does not exist. Prefer "do X" over "don't do Y"; when a boundary must be negative, pair it with the positive alternative. Do not add generic exhortations about effort, thinking, or care ("be thorough", "double-check", "if in doubt use X"); current models over-apply them. A concrete procedure with a named artefact ("read the enclosing function and its call sites") is fine.
 
 ### Line budget
 
-| File | Target | Hard limit |
+| File | Budget (`evals/check_skills.py` fails above it) | Upstream limit |
 |---|---|---|
-| `SKILL.md` body | ≤ 300 lines | 500 lines |
-| Each topical `reference/<topic>.md` | ≤ 200 lines | 300 lines |
+| `SKILL.md` | 300 lines (~5k tokens) | 500 lines |
+| `reference/<topic>.md` | 300 lines; one cohesive topic; add a contents list above 100 lines | one level deep |
 
-If `SKILL.md` exceeds 300 lines, move the largest cohesive block (usually testing patterns or provider-specific details) into `reference/<topic>.md` and leave a one-line pointer.
-
-`reference/evaluation-scenarios.md` is the central regression index and may exceed the topical reference limit; keep each scenario terse.
+Move a cohesive block (setup, testing fixtures, providers) to `reference/` when `SKILL.md` passes 300 lines or the block is used only in some tasks.
 
 ### Code examples
 
-- Every code block gets a language tag (`python`, `bash`, `yaml`, `toml`, `markdown`, or `text`)
-- **One excellent example per pattern** — not three mediocre ones
-- Strip narrating comments (`# import the module`, `# return the result`)
-- Use `app/` as the package name; do not use `your_app`, `your_project`, or similar placeholders
+- Every fence has a language tag. One excellent example per pattern.
+- Copy-ready: every symbol is defined in the skill, imported from a named module, or noted as belonging to a sibling skill. No `...` in parameter lists. No narrating comments.
+- Verified: examples come from a project that passes its quality gate — a scratch project generated from the BoilerplateBuilder template on current library versions. Do not paste unrun code.
+- Neutral: no provider model ids, dates, or library version numbers in prose; versions live once in `> Requires`. Use `app/` and `app/domains/<feature>/`.
 
-### Authoring references
+## Ownership and composition
 
-- Load `reference/anthropic-best-practices.md` when deciding what stays inline, what moves to `reference/`, how strict a workflow should be, or how to structure validation loops.
-- Load `reference/persuasion-principles.md` only for discipline/domain rules agents may rationalize around under pressure. Use it to tighten Red Flags; do not use it to add motivational fluff.
-- Load `reference/evaluation-scenarios.md` before and after editing a skill. Treat it as the regression surface for this repository's skills.
+One owner per topic. When a rule needs another skill's material to be complete, move the rule to that skill instead of linking "see `<sibling>` for the full pattern".
 
-### Description examples
-
-Good and bad descriptions — most author mistakes happen here.
-
-| Bad | Why | Better |
+| Topic | Owner | Not restated in |
 |---|---|---|
-| `Use for tests — write a factory, POST, assert status.` | Workflow summary | Start with `Use when…` and list test triggers |
-| `I help you write API tests.` | First person | Third person only |
-| `Use for testing stuff.` | Vague | Include concrete terms agents search for |
-| `Does not cover general Python style...` on `postgres-database` | Dead-weight exclusion | Drop exclusions the name already excludes |
-| `Use when writing tests. Apply when updating tests.` | Duplicate trigger | Merge into one sentence |
-| `## When to use` body section that bullets the same triggers as the description | Loader only sees the description; duplicate is paid every load | Drop the section, or keep it only for "Do not load for" exclusions or sub-triggers too granular for the description |
+| Type hints, naming, DI, class layout, architecture principles, fail-fast | `python-code-style` | all others |
+| uv / ruff / ty / pytest config, commands, prek hooks, CI, warnings policy | `python-tooling` | all others |
+| API-level tests, factories, test helpers, dependency-override utilities, coverage policy | `python-testing` | all others |
+| Routes, service shape, schemas, exception handlers, settings, app factory, module layout | `fastapi-service` | `postgres-database`, `ai-agents` |
+| SQLAlchemy models, loading strategy, query/pagination/filter helpers, Alembic, DB test fixtures | `postgres-database` | `fastapi-service`, `ai-agents` |
+| pydantic-ai agents, tools, model registry, provider settings, agent test fixtures | `ai-agents` | `fastapi-service`, `postgres-database` |
+| Greenfield generation from the template | `project-scaffolding` | all others |
 
-For full authoring guidance, use `reference/anthropic-best-practices.md`.
-
-## Composition and anti-overlap
-
-**Content ownership** — when writing or editing a skill, confirm the content is not owned by another skill in this table:
-
-| Topic | Owner | Forbidden in |
-|---|---|---|
-| Type hints, naming, DI rules, class layout, architecture principles, fail-fast | `python-code-style` | all others |
-| uv / ruff / ty / pytest / pre-commit configuration and commands | `python-tooling` | all others |
-| API-level tests, polyfactory, FastAPI dependency-override utilities, coverage | `python-testing` | all others |
-| Routes, services, schemas, exception handlers, app factory | `fastapi-service` | `postgres-database`, `ai-agents` |
-| SQLAlchemy models, queries, Alembic migrations, testcontainers setup | `postgres-database` | `fastapi-service`, `ai-agents` |
-| pydantic-ai agents, tools, model registry, TestModel / FunctionModel patterns | `ai-agents` | `fastapi-service`, `postgres-database` |
-
-**Cross-skill references** — use sibling skill references only for discovery, composition, and ownership boundaries.
-A rule must be self-contained inside the skill that teaches it. If the full explanation belongs to another skill,
-move the rule there instead of writing "see `<sibling>` for the full pattern."
-
-Good references:
-- `**Related**:` lists skills that compose with this skill
-- ``For SQLAlchemy models and queries use `postgres-database`.`` in `## When to use`
-- ``See `reference/anthropic-best-practices.md` for...`` when the reference file belongs to the same skill
-
-Bad references:
-- ``TypeAdapter(list[X]) is idiomatic — see `postgres-database` for the full pattern`` inside `python-code-style`
-- A generic skill that links to a framework skill to finish explaining its own rule
-
-**Composition** — which skills load together for which task:
+Services own their queries (that is the architecture), so `fastapi-service` shows the service shape with one lookup and `postgres-database` shows the full query patterns; the two examples must agree.
 
 | Task | Load alongside `python-code-style` |
 |---|---|
 | Add CRUD endpoint with DB | `fastapi-service` + `postgres-database` |
 | Add AI agent endpoint | `ai-agents` + `fastapi-service` |
-| Write or update tests | `python-testing` + relevant domain skill(s) |
-| Set up tooling / CI / Makefile | `python-tooling` |
-| Write a migration | `postgres-database` |
-| Refactor for style compliance | (nothing — `python-code-style` alone is enough) |
+| Write or update tests | `python-testing` + the domain skill(s) |
+| Set up tooling / CI | `python-tooling` |
+| Start a new service | `project-scaffolding`, then the domain skills |
 
-**All domain skills assume `python-code-style` is in effect. They must NOT re-state its rules.**
+All domain skills assume `python-code-style` is in effect and do not restate it.
 
-## Skill edit validation loop
+## Workflow
 
-Use RED-GREEN-REFACTOR for new skills and meaningful edits:
+### Creating a skill
 
-1. **RED.** Read existing scenarios first. For new behavior, add or identify a scenario that fails without the rule. Capture the exact mistake or rationalization the skill must prevent.
-2. **GREEN.** Make the smallest skill edit that addresses that failure. Prefer one rule, one table row, or one reference pointer over broad rewrites.
-3. **REFACTOR.** Re-check line budget, Red Flags, Gotchas, and evaluation scenarios. If a new rationalization appears, add an explicit counter and re-check.
+1. List three or more distinct, recurring triggers; fewer means the content belongs in an existing skill.
+2. Check the ownership table; if more than about 30% of the content belongs elsewhere, extend that skill instead.
+3. Write the description, then the body from the skeleton. Verify every example in a project that passes its quality gate.
+4. Add a `## <skill-name>` section to `evals/scenarios.md` and the cases to `evals/cases.json`: 3–5 should-load prompts (substantive, casual phrasing, pasted errors), 2–3 near-miss should-not-load prompts naming the owning sibling, and 2–4 behaviour cases whose graders check code, not prose.
+5. Add the skill to every sibling's `**Related**` line where it composes, to `README.md`, and to the plugin manifests' keywords if it widens the plugin's scope.
+6. `git add skills/<name>/` and any other file you created; leave modified files unstaged unless the owner asks. Do not commit; the owner commits.
 
-## Workflow: Creating a new skill
+### Editing a skill
 
-Follow each step in order. Skipping steps produces the skill-drift problem that this skill exists to prevent.
+1. Read the whole section you are changing, including table headers and the neighbouring example; if the quoted line is already right in context, say so and change nothing.
+2. If the change widens scope, re-check the ownership table; the right edit may be in a sibling.
+3. Make the smallest change that fixes the observed problem. Add a rule only after a repeated failure, then add the eval case that would have caught it.
+4. Re-run the checks below. Run the eval cases for the touched skill when the owner asks for it (they spend API calls); otherwise list the case names to run. Adjust cases only with a stated reason in the diff.
+5. `git add` any file you created; leave modified files unstaged unless the owner asks.
 
-1. **Brainstorm triggers.** Write one sentence per scenario where a developer would want this skill. If you cannot produce 3+ distinct, concrete triggers, the skill is too narrow — absorb the content into an existing skill instead.
+### Checks before handing off
 
-2. **Check overlap.** Compare scope against the ownership table above. If >30% of the planned content would belong to an existing skill, extend that skill instead of creating a new one. If the skill genuinely occupies an empty area, proceed.
+```bash
+claude plugin validate .                              # .claude-plugin/marketplace.json only
+uv run evals/check_skills.py                          # frontmatter, budgets, links, fences, manifests
+python3 evals/run_evals.py --only <case-name> ...     # trigger + behaviour cases for the touched skill; spends API calls
+```
 
-3. **Draft the description.** 30-55 words. Start with "Use when…". State triggers, not workflow. Add a disambiguation clause ONLY when a sibling skill could plausibly be confused (positive `For X see \`sibling\`` pointer) or this skill is the broadest in its area and prone to over-application ("Does not cover X" exclusion). If the name + topics already exclude a topic, do not list it. Iterate until no recipe leaks into the triggers and no token is wasted.
+Re-read the changed section once more and confirm every path named in prose exists; the checker covers links and `reference/` mentions only.
 
-4. **Draft the body.** Follow the skeleton exactly. Keep one excellent code example per pattern. Do NOT add a `## When to use` section unless it carries information the description cannot — explicit "Do not load for:" exclusions, or sub-triggers too granular for the description budget. A one-line sibling pointer ("For X use `<sibling>`") goes under the overview, not its own section. If any single section exceeds 200 lines, plan to move it to `reference/<topic>.md` (step 6).
+## Evals
 
-5. **Write Red Flags + Gotchas.** For discipline/domain skills, build a rationalization table (`About to X` → `Apply rule Y`). Think specifically: what would an agent DO wrong without this skill? Use those exact mistakes as row entries.
-
-6. **Split if over budget.** If `SKILL.md` exceeds 300 lines, move the largest cohesive section (commonly *testing*, *providers*, or *advanced patterns*) into `reference/<topic>.md`. Leave a one-line pointer: "See `reference/<topic>.md` for…".
-
-7. **Write evaluation scenarios.** Add a `### Triggering` block (3-5 should-load prompts including casual phrasing or pasted errors, 2-3 near-miss should-not-load prompts naming the owning sibling) plus 3-4 behavior scenarios to `reference/evaluation-scenarios.md` under a new `## <skill-name>` heading. Use the formats described in that file.
-
-8. **Cross-reference.** Add a `**Related**:` line to the new SKILL.md listing skills that compose with it. Then audit every existing SKILL.md's `**Related**:` line and add the new skill where relevant (usually 1-3 additions).
-
-9. **Stage in git.** Per the user rule, run `git add skills/<name>/` so the new files aren't lost. Do not commit unless explicitly asked.
-
-## Workflow: Editing an existing skill
-
-1. **Locate the rule.** Read the complete relevant section, including table headers and neighboring examples. Which
-   section owns the behavior you are changing? If quoted text is already correct in context, explain why and make no edit.
-
-2. **Diff the intent.** If the change expands the skill's scope, re-check the ownership table. Sometimes the right edit is to move content to a different skill, not add it here.
-
-3. **Apply minimal change.** Do not rewrite adjacent sections that are unrelated to the edit. Preserve surrounding structure, formatting, and terminology.
-
-4. **Re-verify against evaluation scenarios.** Read the `## <skill-name>` section of `reference/evaluation-scenarios.md`. If your change would cause any scenario to fail, either adjust your change or update the scenario with a clear reason documented in the commit/diff. If you changed the frontmatter `description`, re-check the skill's `### Triggering` block.
-
-5. **Stage in git.** `git add skills/<name>/SKILL.md` plus any reference file you touched.
-
-## Red Flags — STOP
-
-These mean you are about to violate the house style. Stop and apply the named rule:
-
-| About to… | Rule to apply |
-|---|---|
-| Write a description that summarizes workflow ("Use X to write a factory, then POST…") | Description = triggers ONLY, never a recipe |
-| Add a "Does not cover X" line listing topics the name already excludes | Disambiguation is optional — earn it (sibling-confusion risk or broad over-application risk) or leave it out |
-| Pair "Use when…" with "Apply when…" that restates the same triggers | Pick one; merge into a single sentence |
-| Add a `compatibility:` frontmatter field | Put `> Requires ...` in the body instead |
-| Write a first-person description ("I help you…") | Third person only |
-| Add a `## When to use` section that paraphrases the description in bullets | The loader only sees the description; restating it in the body wastes tokens on every load. Drop the section, or keep it only for "Do not load for" exclusions or sub-triggers the description cannot fit |
-| Repeat a `python-code-style` rule inside a domain skill | Domain skills assume `python-code-style`; never re-state it |
-| Duplicate tooling commands across skills | Only `python-tooling` owns commands |
-| Explain a local rule by linking to a sibling skill for "the full pattern" | Cross-skill references — make the local rule self-contained or move it to the owning skill |
-| Edit a quoted line without reading its full section and table headers | Editing workflow — verify context before changing files |
-| Exceed 300 lines in `SKILL.md` without splitting | Move to `reference/<topic>.md` |
-| Write a SKILL.md without a `**Related**:` line | Mandatory skeleton element |
-| Use `your_app` / `your_project` placeholders | Use `app` + the standard substitution note |
-| Create a skill without ≥3 concrete triggers | The skill is too narrow; extend an existing one instead |
-| Add a new skill without evaluation scenarios | Scenarios are part of the deliverable, not optional |
-| Copy a rule into two skills "for convenience" | Single source of truth per topic |
-| Narrate changes in code comments | Code should be self-documenting; narrating comments are banned in examples too |
+- `evals/cases.json` is the runnable suite (trigger cases with expected/forbidden skills; behaviour cases with regex graders over written files and code blocks). `evals/run_evals.py` runs each case in a fresh scratch project with the plugin loaded and, for behaviour cases, once more without it, and prints skills fired, score, cost, and turns. `evals/README.md` documents the format and flags.
+- `evals/scenarios.md` is the human-readable specification the cases are derived from; keep the two in sync when a skill's must-produce tokens change. The runnable suite is a subset of the spec; `skill-writer` (`disable-model-invocation: true`) has no trigger cases, and its behaviour scenarios are run by hand.
+- `evals/check_skills.py` is the static check (frontmatter, budgets, links, fences, `agents/openai.yaml`, manifests); it spends no API calls.
+- Graders check artifacts (files written, code fences), never prose: a sentence saying "do not create `utils.py`" must not fail a must-not grader. Fixtures must not pre-empt the action under test.
+- Run trigger cases on the model your team uses most; behaviour cases with and without the skill so the delta is visible.
 
 ## Common mistakes
 
-**1. Description that summarizes the skill's workflow.**
-Agent reads the description, takes the summary as the instruction, and never opens the skill body. Fix: description = when, not how.
-
-**2. Skill with one trigger.**
-If the skill only applies to a single, narrow task (e.g., "use when setting up pytest-asyncio"), the content should be a section inside a broader skill, not a new one. Fix: expand scope or absorb.
-
-**3. Dumping reference docs into `SKILL.md`.**
-A long `SKILL.md` slows every load. Fix: main file teaches patterns + workflow; reference files hold exhaustive detail.
-
-**4. Adding "also consider X" escape hatches.**
-"You could also use pypdf, PyMuPDF, or pdfplumber" creates paralysis. Fix: one default + one escape hatch for a specific case (e.g., "pdfplumber; for scanned PDFs use pdf2image + tesseract").
-
-**5. Using real dates or version numbers in prose.**
-"As of January 2026, SQLAlchemy 2.0.45 supports…" ages badly. Fix: use capability language ("recent SQLAlchemy versions support…") or cite the required version once in the `> Requires` line.
-
-**6. Inconsistent terminology within a skill.**
-Mixing "endpoint", "route", and "path" in the same skill confuses the agent. Fix: pick one term per concept and search/replace.
-
-**7. `## When to use` body section that restates the description.**
-The loader picks the skill from the frontmatter `description` alone; the body is read only after the skill has already been chosen. A `## When to use` block that bullets the same triggers in different words is paid on every load and adds nothing. Fix: drop the section. Keep it only when it carries information the description cannot — explicit "Do not load for:" exclusions, or sub-triggers too granular for the 30-55-word description budget. A one-line sibling pointer ("For X use `<sibling>`") belongs under the overview / `**Related**:` line, not its own section.
+| Mistake | Do instead | Why |
+|---|---|---|
+| Description that summarizes the workflow | Triggers first, then concrete keywords, no steps | Agents take the summary as the instruction and never open the body |
+| `## When to use` section repeating the description | Drop it; use `when_to_use` frontmatter for extra triggers | The body is read after routing; the section costs tokens on every load |
+| Same rule in two skills "for convenience" | One owner, one sentence elsewhere naming the owner | Two phrasings drift; literal models reconcile them at a cost |
+| "Never X" for a house default | "The house default is X; use Y when Z" | Hosts obey the ban even when the documented exception applies |
+| Capitalized emphasis, `STOP` tables, persuasion tricks | Plain imperative with the reason | Current models over-trigger on emphasis; the reason generalizes |
+| Example with an undefined helper or `...` parameters | Define it, import it, or name the owning skill | The agent copies the example verbatim |
+| Model ids, dates, or version numbers in prose | Capability language; versions only in `> Requires` | Ages within weeks |
+| Rule added without an eval case | Add the case that fails without the rule | Otherwise the next edit removes the rule unnoticed |
+| A "must not" grader that matches prose | Grade files and code fences only | Explanations legitimately mention the forbidden token |
+| `SKILL.md` over 300 lines without a reference split | Move the largest cohesive block to `reference/` | Every load pays for the whole file |
 
 ## Gotchas
 
-- Adding a new skill means auditing ALL siblings' `**Related**:` lines and adding the new skill where it composes
-- `description` is injected into the system prompt — if triggers are vague, the skill does not load when needed
-- `reference/*.md` files are NEVER auto-loaded; the main `SKILL.md` must link to them by path
-- Changes to `python-code-style` affect every domain skill's assumptions — review all siblings after editing it
-- `reference/evaluation-scenarios.md` doubles as a regression test — read it before AND after editing any skill
-- This skill follows its own rules. If you edit THIS skill, re-run its own Red Flags table against the diff
-
-## See also
-
-- `reference/evaluation-scenarios.md` — spot-check scenarios per existing skill plus the format spec for writing new ones
+- Frontmatter that fails to parse still loads in Claude Code, with an empty description: the skill silently stops routing. `claude plugin validate .` checks only `.claude-plugin/marketplace.json`; `uv run evals/check_skills.py` parses every frontmatter.
+- Adding a skill means auditing every sibling's `**Related**` line and `README.md`; nothing else discovers it.
+- Changing `python-code-style` changes what every domain skill may omit; review the siblings after editing it.
+- `reference/*.md` files are never auto-loaded; `SKILL.md` must link them by path with a one-line "load when …" pointer.
+- The BoilerplateBuilder template is the reference implementation for the layout (`app/domains/<feature>/`) and the tooling baseline; when the template and a skill disagree, fix the one that is wrong and note it in the diff rather than teaching both.
+- This skill follows its own rules; after editing it, re-run its Common mistakes table against the diff.

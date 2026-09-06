@@ -1,52 +1,46 @@
 ---
 name: postgres-database
-description: Use when working with PostgreSQL via SQLAlchemy 2.0 async and Alembic — defining models, writing service queries (CRUD, pagination, filtering), generating or debugging migrations, setting up testcontainers-based database isolation in tests, or diagnosing `MissingGreenlet`, `lazy='raise'` / `InvalidRequestError`, or N+1 query problems.
+description: Use when writing SQLAlchemy 2.0 async models, queries, or Alembic migrations against PostgreSQL — `Mapped[]` columns, `ondelete`, `timezone=True`, `uuidv7` keys, service CRUD, pagination and filtering, testcontainers database isolation, or diagnosing `MissingGreenlet`, `lazy='raise'` / `InvalidRequestError`, or N+1 queries.
 ---
 
 # PostgreSQL Database Patterns
 
-SQLAlchemy 2.0 async patterns for PostgreSQL. Services own queries directly — no repository layer.
+This skill owns the database half of a service: SQLAlchemy models, relationship loading, the query and write patterns services use, pagination and filtering helpers, Alembic migrations, and the Postgres test fixtures. Services hold the queries themselves; there is no repository layer. An explicit instruction from the user or the project (`AGENTS.md`, `pyproject.toml`, existing code) overrides any house default here; keep the invariants that still apply, follow the instruction for the rest, and name the default you departed from.
 
-> Requires Python 3.13+, SQLAlchemy 2.0+, Alembic, PostgreSQL, testcontainers, psycopg.
-> Examples use `app/` as the top-level package. Substitute your package name if different.
+> Requires Python 3.13+, SQLAlchemy 2.0+, Alembic, PostgreSQL 18+ (uuidv7), psycopg, fastapi-pagination, testcontainers.
+> Examples use `app/` as the top-level package and `app/domains/<feature>/` for feature modules. Substitute your names if different.
 
-**Related**: `python-code-style`, `python-testing`, `python-tooling`, `fastapi-service`, `project-scaffolding`.
+**Related**: `python-code-style` defines the naming used here (`<Entity>Model`, `_logger`, `*Error`); load it alongside. Also `python-testing`, `python-tooling`, `fastapi-service`, `project-scaffolding`.
+For routes, request and response schemas, and exception handlers use `fastapi-service`; for factories, test helpers and the `app` / `client` fixtures use `python-testing`.
 
-For HTTP routes and Pydantic schemas use `fastapi-service`. For shared test fixtures and assertion patterns use `python-testing`.
+## Models
 
-## Setup
-
-See `reference/setup.md` for the `Base` / `DeclarativeBase` with Alembic naming convention, the `lru_cache`d async engine and session factory, and the `get_session` / `open_db_session` session providers.
-
-### Models
-
-Models live in `app/infrastructure/db/models/<entity>.py`. Naming: `<Entity>Model`.
+Put one entity per module under `app/infrastructure/db/models/`; class naming follows `python-code-style`. Annotate every column with `Mapped[]` and declare it with `mapped_column()`. Give every `String` an explicit length that matches the schema's `max_length`, so the column is a bounded `VARCHAR(N)` and the database rejects oversized values that slipped past validation. Widening the limit later is a catalog-only change on PostgreSQL, so pick a length you can live with. Use `Text` where the content is genuinely unbounded prose with no product limit — a comment body, a description — and then leave `max_length` off the pydantic field too, so the two halves still agree.
 
 ```python
-from datetime import date, datetime
+# app/infrastructure/db/models/author.py
+from datetime import datetime
+from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, DateTime, ForeignKey, func, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, func, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.infrastructure.db.database import Base
+
+if TYPE_CHECKING:
+    from app.infrastructure.db.models.book import BookModel
 
 
 class AuthorModel(Base):
     __tablename__ = 'authors'
-    __table_args__ = (
-        UniqueConstraint(
-            'first_name', 'last_name', 'birthday',
-            name='uq_authors_full_name_birthday',
-            postgresql_nulls_not_distinct=True,
-        ),
-    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    first_name: Mapped[str] = mapped_column(String(64), index=True)
-    last_name: Mapped[str] = mapped_column(String(64), index=True)
-    description: Mapped[str] = mapped_column(String(512))
-    birthday: Mapped[date | None] = mapped_column(Date)
+    name: Mapped[str] = mapped_column(String(128), index=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     books: Mapped[list['BookModel']] = relationship(
         back_populates='author',
@@ -56,92 +50,184 @@ class AuthorModel(Base):
     )
 ```
 
-Key rules:
-- `Mapped[]` for all columns — modern SQLAlchemy 2.0 style
-- `server_default=func.now()` for timestamps — DB generates the value
-- Explicit `String(N)` lengths matching schema `max_length`
-- `UniqueConstraint` in `__table_args__` with descriptive `name` (Alembic needs stable names)
-- `TYPE_CHECKING` guard for forward references in relationships
-- Every `relationship(...)` declares `lazy='raise'` — no implicit loading; see [Loading relationships](#loading-relationships)
+Timestamps are `DateTime(timezone=True)` with `server_default=func.now()`, so the column is a `timestamptz` and the database, not the application clock, produces the value. `updated_at` adds `onupdate=func.now()` for ORM-issued updates.
 
-One-to-one example (Book ↔ Cover — each book has at most one cover):
+Sibling model modules refer to each other through an `if TYPE_CHECKING:` import plus a quoted annotation. The guarded import is what keeps ruff's `F821` quiet, and SQLAlchemy resolves the quoted `'BookModel'` from its declarative registry when mappers are configured, so there is no runtime import and no cycle between modules.
 
 ```python
+# app/infrastructure/db/models/book.py
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+from sqlalchemy import DateTime, ForeignKey, func, Integer, String, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.infrastructure.db.database import Base
+
+if TYPE_CHECKING:
+    from app.infrastructure.db.models.author import AuthorModel
+    from app.infrastructure.db.models.cover import CoverModel
+
+
 class BookModel(Base):
     __tablename__ = 'books'
+    __table_args__ = (
+        UniqueConstraint(
+            'title',
+            'author_id',
+            'published_year',
+            name='books_title_author_year_key',
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    title: Mapped[str] = mapped_column(String(256))
-    author_id: Mapped[int] = mapped_column(Integer, ForeignKey('authors.id'))
+    title: Mapped[str] = mapped_column(String(256), index=True)
+    published_year: Mapped[int | None] = mapped_column(Integer)
+    author_id: Mapped[int] = mapped_column(Integer, ForeignKey('authors.id', ondelete='CASCADE'))
 
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    author: Mapped['AuthorModel'] = relationship(back_populates='books', lazy='raise')
     cover: Mapped['CoverModel | None'] = relationship(
         back_populates='book',
-        lazy='raise',
-    )
-
-
-class CoverModel(Base):
-    __tablename__ = 'covers'
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    book_id: Mapped[int] = mapped_column(Integer, ForeignKey('books.id'), unique=True)
-    image_url: Mapped[str] = mapped_column(String(512))
-
-    book: Mapped['BookModel'] = relationship(
-        back_populates='cover',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
         lazy='raise',
     )
 ```
 
-### Primary key choice
+Single-column unique constraints, foreign keys and indexes get their names from the naming convention on `Base` (see `reference/setup.md`). Give a composite constraint an explicit `name=`: the convention's `uq` template interpolates only the first column, so two composite unique constraints that start with the same column would be emitted with the same name.
 
-Integer surrogate keys (shown above) are the default — simple, small, fast. Choose a UUID primary key when identifiers must be generated outside Postgres (client-side, across services, pre-commit) or when they leak through public URLs and sequential IDs would expose internals.
+A numeric column drawn from a fixed range gets the same treatment as a bounded `String`: mirror the schema's `ge`/`le` as a named `CheckConstraint` in `__table_args__`, so a value that reached the database another way is rejected there too — `__table_args__ = (CheckConstraint('rating BETWEEN 1 AND 5', name='rating_range'),)`. Every `CheckConstraint` needs a `name=`, single-column ones included: the `ck` template interpolates `%(constraint_name)s`, so an unnamed check raises `InvalidRequestError` when the table is created. The convention turns `name='rating_range'` on a `reviews` table into `reviews_rating_range_check`.
 
-When you do use a UUID, prefer UUIDv7 over v4 — v7 is time-ordered, so B-tree indexes stay efficient on insert:
+### Cascades and deletes
+
+`passive_deletes=True` on the parent relationship and `ondelete='CASCADE'` on the child's foreign key are one decision, not two. `passive_deletes=True` tells the ORM not to load and delete children itself because the database will, and the service deletes parents with a Core `delete()` statement, which bypasses ORM cascades entirely. Without the database rule, that delete raises `IntegrityError: ... violates foreign key constraint`. If you do not want the database to cascade, drop `passive_deletes=True` and delete the children explicitly.
+
+### Primary keys
+
+An integer surrogate key is the house default: small, cheap to index, and readable in logs. Choose a UUID when identifiers are generated outside this database — by clients, by another service, or before the row exists — or when they appear in public URLs and a sequential id would leak row counts. Prefer UUIDv7 over v4, because v7 is time-ordered and keeps B-tree inserts at the right edge of the index instead of scattering them. UUIDv7 encodes its creation timestamp, so it is not an opaque identifier. `reference/setup.md` has the `CoverModel` example these queries load, where the database generates the key.
+
+## Loading relationships
+
+Every `relationship()` declares `lazy='raise'`, so nothing loads implicitly. Touching an attribute the originating query did not load raises `InvalidRequestError` naming `lazy='raise'` at the access site, instead of emitting a hidden query per row or failing later as `MissingGreenlet` during response serialization. The fix is the query that fetched the object: add the missing `.options(...)`. Declare an eager `lazy=` on the relationship only when every query needs it and say so in a comment; when the user asks for that, do it and keep `lazy='raise'` on the rest.
+
+| Relationship | Single-object fetch | List or paginated query |
+|---|---|---|
+| many-to-one, one-to-one | `joinedload` | `selectinload` |
+| one-to-many, many-to-many | `selectinload` | `selectinload` |
+
+`joinedload` fetches a to-one in the same round trip through a LEFT OUTER JOIN, which is the cheapest option when there is one parent row. Across a list it repeats every column of a shared parent on each child row, so lists use `selectinload`, which issues one extra `WHERE id IN (...)` SELECT per relationship and sends each parent once.
+
+`joinedload` on a collection is the exception, not a ban: it multiplies parent rows and forces `LIMIT` into a subquery, and SQLAlchemy then requires `Result.unique()` before the rows can be read. Use it only with a stated reason about the shape of that query, and profile the change on a hot endpoint rather than assuming.
+
+## Service queries
+
+Services take an `AsyncSession` through `Depends(get_session)` and build statements directly. Reads select the model, declare their eager loads, and validate into the response schema:
 
 ```python
-import uuid
-from sqlalchemy import Uuid
-from sqlalchemy.orm import Mapped, mapped_column
+# app/domains/books/service.py
+from logging import getLogger
+from typing import Annotated
 
-class AuthorModel(Base):
-    __tablename__ = 'authors'
+from fastapi import Depends
+from fastapi_pagination import Page, Params
+from fastapi_pagination.ext.sqlalchemy import apaginate
+from pydantic import TypeAdapter
+from sqlalchemy import delete, insert, Select, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload, selectinload
 
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
-```
+from app.core.exceptions import NotFoundError
+from app.domains.books.schemas import (
+    Author,
+    AuthorCreate,
+    Book,
+    BookCreate,
+    BookDetail,
+    BookListFilters,
+    BookListSorting,
+    BookPatch,
+    BookWithAuthor,
+)
+from app.infrastructure.db.database import get_session
+from app.infrastructure.db.models.author import AuthorModel
+from app.infrastructure.db.models.book import BookModel
 
-If your PostgreSQL exposes native `uuidv7()` (PG 17+ or the `pg_uuidv7` extension), prefer generating it in the database via `server_default`; otherwise generate in Python with `uuid.uuid7()` (stdlib since Python 3.14).
-
-## Usage
-
-### Service Query Patterns
-
-Services accept `AsyncSession` via `Depends(get_session)` and query directly:
-
-```python
-from sqlalchemy import delete, insert, select, update
+_logger = getLogger(__name__)
 
 
-class AuthorService:
-    AUTHOR_LIST_ADAPTER: TypeAdapter[list[Author]] = TypeAdapter(list[Author])
+class BookService:
+    BOOK_LIST_ADAPTER: TypeAdapter[list[BookWithAuthor]] = TypeAdapter(list[BookWithAuthor])
 
     def __init__(self, session: Annotated[AsyncSession, Depends(get_session)]) -> None:
         self._session = session
 
-    async def get_author_by_id(self, author_id: int) -> Author:
-        query = select(AuthorModel).filter(AuthorModel.id == author_id)
-        author = await self._session.scalar(query)
-        if author is None:
-            raise NotFoundError(f'Author(id={author_id}) not found')
-        return Author.model_validate(author)
+    async def get_book_by_id(self, book_id: int) -> BookDetail:
+        query = (
+            select(BookModel)
+            .options(joinedload(BookModel.author), joinedload(BookModel.cover))
+            .filter(BookModel.id == book_id)
+        )
+        book = await self._session.scalar(query)
+        if book is None:
+            raise NotFoundError(f'Book(id={book_id}) not found')
+        return BookDetail.model_validate(book)
+
+    async def list_books(
+        self, filters: BookListFilters, sorting: BookListSorting, pagination_params: Params
+    ) -> Page[BookWithAuthor]:
+        query = select(BookModel).options(selectinload(BookModel.author))
+        query = self._apply_filters(query, filters)
+        query = sorting.sort_query(query, BookModel)
+        return await apaginate(
+            self._session,
+            query,
+            params=pagination_params,
+            transformer=lambda books: self.BOOK_LIST_ADAPTER.validate_python(books, from_attributes=True),
+        )
+
+    def _apply_filters(self, query: Select, filters: BookListFilters) -> Select:
+        if filters.ids is not None:
+            query = query.filter(BookModel.id.in_(filters.ids))
+        if filters.title is not None:
+            query = query.filter(BookModel.title.icontains(filters.title, autoescape=True))
+        if filters.author_id is not None:
+            query = query.filter(BookModel.author_id == filters.author_id)
+        if filters.created_from is not None:
+            query = query.filter(BookModel.created_at >= filters.created_from)
+        return query
+```
+
+`apaginate` runs the count and page queries and needs the `transformer` to turn the returned ORM objects into schemas; without it the `Page` carries model instances. Keep the `TypeAdapter` as a class attribute so it is built once per process, not once per request. Filters go in a `_apply_filters` helper that takes and returns a `Select`, so the query method stays readable and each clause is skipped when its field is unset. `icontains` renders `ILIKE '%value%'`, and `autoescape=True` escapes `%` and `_` inside the user's value so a search for `a_b` does not match everything.
+
+Writes are single statements with `.returning(...)`, which inserts or updates and reads the row back in one round trip:
+
+```python
+# app/domains/books/service.py, same class
+    async def create_book(self, creation: BookCreate) -> Book:
+        await self._get_author_model_or_raise(creation.author_id)
+        query = insert(BookModel).values(**creation.model_dump()).returning(BookModel)
+        book = await self._session.scalar(query)
+        return Book.model_validate(book)
+
+    async def patch_book(self, book_id: int, updates: BookPatch) -> Book:
+        changes = updates.model_dump(exclude_unset=True)
+        if not changes:
+            return Book.model_validate(await self._get_book_model_or_raise(book_id))
+
+        query = update(BookModel).filter(BookModel.id == book_id).values(**changes).returning(BookModel)
+        book = await self._session.scalar(query)
+        if book is None:
+            raise NotFoundError(f'Book(id={book_id}) not found')
+        return Book.model_validate(book)
 
     async def create_author(self, creation: AuthorCreate) -> Author:
-        await self._validate_author_unique(creation)
-        query = (
-            insert(AuthorModel)
-            .values(first_name=creation.first_name, last_name=creation.last_name)
-            .returning(AuthorModel)
-        )
+        query = insert(AuthorModel).values(**creation.model_dump()).returning(AuthorModel)
         author = await self._session.scalar(query)
         return Author.model_validate(author)
 
@@ -149,152 +235,63 @@ class AuthorService:
         query = delete(AuthorModel).filter(AuthorModel.id == author_id).returning(AuthorModel.id)
         deleted_author_id = await self._session.scalar(query)
         if deleted_author_id is None:
-            _logger.info('Author with id=%s not found but requested for deletion', author_id)
+            _logger.info(
+                f'Author(id={author_id}) requested for deletion was not found',
+                extra={'extra': {'author_id': author_id}},
+            )
+
+    async def _get_author_model_or_raise(self, author_id: int) -> AuthorModel:
+        author = await self._session.scalar(select(AuthorModel).filter(AuthorModel.id == author_id))
+        if author is None:
+            raise NotFoundError(f'Author(id={author_id}) not found')
+        return author
+
+    async def _get_book_model_or_raise(self, book_id: int) -> BookModel:
+        book = await self._session.scalar(select(BookModel).filter(BookModel.id == book_id))
+        if book is None:
+            raise NotFoundError(f'Book(id={book_id}) not found')
+        return book
 ```
 
-- Request-scoped write methods that receive `get_session` do not call `commit()` or `rollback()`
-- `open_db_session()` or the caller-owned session defines the transaction boundary
-- Do not wrap single-statement CRUD writes in `begin_nested()`. Reach for it only when you need partial rollback inside a larger transaction — bulk import that should continue past a per-row failure, or catching `IntegrityError` and keeping the outer transaction usable. For test isolation against accidental `session.commit()` calls, use `join_transaction_mode='create_savepoint'` in the test session fixture, not service-level savepoints.
-- `insert(...).returning(Model)` — single query for insert+read
-- Domain exceptions (`NotFoundError`) — never `HTTPException` in services
+`create_book` looks the author up first so an unknown `author_id` is a `NotFoundError` at the boundary instead of an `IntegrityError` from the foreign key. A delete that matched no row is logged and returns: the caller's goal already holds, so the route answers 204. Raise `NotFoundError` there only when the caller must distinguish "deleted" from "never existed", as an audited or billed operation does.
 
-### Loading relationships
+`exclude_unset=True` is what makes PATCH partial: a field the client omitted stays out of `changes` and is never written, while a field sent as `null` is present and clears the column. That is why the patch schema types a field against its column: on a nullable column the field is `T | None` and `null` clears it; on a NOT NULL column it is `T = Field(default=None)`, so an omitted field is still unset while a sent `null` is a 422 rather than an `IntegrityError`. Pydantic does not validate the default, but ty does, so that line carries `# ty: ignore[invalid-assignment]`. The schema itself belongs to `fastapi-service`. Services raise domain exceptions such as `NotFoundError` and leave the HTTP mapping to the exception handlers in `fastapi-service`.
 
-**No hidden loads.** Every relationship attribute the service or response touches must be loaded explicitly in the query that fetches the parent, via `.options(joinedload(...))` or `.options(selectinload(...))`. Lazy loading is forbidden — all `relationship(...)` declarations set `lazy='raise'` so a missed eager-load fails with `InvalidRequestError` at the call site instead of leaking N+1 queries or surprising the next reader.
+Request-scoped services do not call `commit()` or `rollback()`; the transaction belongs to `open_db_session()`, which commits on a clean exit and rolls back on an exception. Do not wrap a single-statement write in `begin_nested()` either — one statement is already atomic, and a savepoint around it only adds a round trip. `begin_nested()` earns its place when part of a larger transaction must roll back on its own, such as a bulk import that continues past a failing row or an `IntegrityError` you catch and recover from.
 
-**`selectinload` is the default.** Use `joinedload` only where related rows can't multiply: a one-to-one, or a many-to-one you fetch for a single parent. The two damage cases are `joinedload` on a collection (duplicates parent rows, wraps `LIMIT` in a subquery) and `joinedload` on a many-to-one across a list (re-transmits each shared parent's columns on every child row — `O(rows × parent_width)`, over an order of magnitude slower with wide, shared parents).
+## Migrations
 
-| Relationship | get-by-id (one parent) | list / paginated |
-|---|---|---|
-| one-to-one | `joinedload` | `joinedload` |
-| many-to-one | `joinedload` | `selectinload` |
-| one-to-many / many-to-many | `selectinload` | `selectinload` |
-
-> Matches SQLAlchemy's guidance that `joinedload` is the general-purpose strategy for many-to-one — with one carve-out: lists use `selectinload` to dodge the wide-shared-parent transfer blow-up.
-
-**`joinedload` — to-one on a single-object fetch** (one round-trip via LEFT OUTER JOIN, one joined row per parent):
-
-```python
-from sqlalchemy import select
-from sqlalchemy.orm import joinedload
-
-
-async def get_book_by_id(self, book_id: int) -> Book:
-    query = (
-        select(BookModel)
-        .options(joinedload(BookModel.author))
-        .filter(BookModel.id == book_id)
-    )
-    book = await self._session.scalar(query)
-    if book is None:
-        raise NotFoundError(f'Book(id={book_id}) not found')
-    return Book.model_validate(book)
-```
-
-**`selectinload` — collections, and any to-one on a list** (parent SELECT + one `WHERE id IN (...)` SELECT per relationship; no row duplication, dedupes shared parents):
-
-```python
-from sqlalchemy.orm import selectinload
-
-
-async def list_books(
-    self, filters: BookListFilters, pagination_params: Params,
-) -> Page[Book]:
-    query = (
-        select(BookModel)
-        .options(selectinload(BookModel.author))  # many-to-one on a list — selectinload (dedupes shared parents)
-        .options(selectinload(BookModel.tags))    # M2M — selectinload
-    )
-    query = self._apply_filters(query, filters)
-    return await apaginate(
-        self._session, query, params=pagination_params,
-        transformer=lambda books: self.BOOK_LIST_ADAPTER.validate_python(books, from_attributes=True),
-    )
-```
-
-### Pagination
-
-Use `fastapi_pagination` with a `TypeAdapter` transformer:
-
-```python
-from pydantic import TypeAdapter
-from fastapi_pagination import Page, Params
-from fastapi_pagination.ext.sqlalchemy import apaginate
-
-
-async def list_authors(
-    self, filters: AuthorListFilters, sorting: AuthorListSorting, pagination_params: Params
-) -> Page[Author]:
-    query = select(AuthorModel)
-    query = self._apply_filters(query, filters)
-    query = self._apply_sorting(query, sorting)
-    return await apaginate(
-        self._session, query, params=pagination_params,
-        transformer=lambda authors: self.AUTHOR_LIST_ADAPTER.validate_python(authors, from_attributes=True),
-    )
-```
-
-The transformer validates ORM objects into Pydantic models — without it you get raw model instances.
-
-### Filtering
-
-Case-insensitive contains pattern for text filters:
-
-```python
-from sqlalchemy import Select
-
-
-def _apply_filters(self, query: Select, filters: AuthorListFilters) -> Select:
-    if filters.name:
-        full_name = func.concat(AuthorModel.first_name, ' ', AuthorModel.last_name)
-        query = query.filter(full_name.icontains(filters.name))
-    if filters.ids:
-        query = query.filter(AuthorModel.id.in_(filters.ids))
-    if filters.created_from:
-        query = query.filter(AuthorModel.created_at >= filters.created_from)
-    return query
-```
-
-### Migrations
-
-Always generate with Alembic autogenerate:
+Generate every schema migration with autogenerate:
 
 ```bash
-make migration MSG="add authors"
+uv run alembic revision --autogenerate -m "add books"
 ```
 
-Never hand-write migration files. Ensure `migrations/env.py` imports all models so metadata is complete. Customize the generated file only if Alembic cannot detect the change (e.g., data migrations).
+Autogenerate compares the models with the database `DATABASE_URL` points at, so start the local stack (`make up-dependencies`, or `docker compose up -d`) and bring it to head (`make migrate`) first; a stale local schema produces a wrong diff. Run `migrate` and `downgrade` only against the local compose database unless the user explicitly names another target.
 
-## Testing
+Then open the generated revision and read it. Autogenerate is a starting point, not a verdict: it renders a column rename as a drop plus an add, which destroys data, and it sees neither enum value changes nor a new `CheckConstraint` — both come back as an empty revision. Hand-edit the revision for those cases and write data migrations by hand. `migrations/env.py` imports every model module before it reads `Base.metadata`, so a model that is never imported is invisible to autogenerate and its table shows up in the next revision as a drop.
 
-See `reference/testing.md` for testcontainers-backed database isolation: session-scoped Postgres container,
-migration-backed engine fixture, function-scoped rollback session, and startup-migration disabling.
+## Setup and testing
 
-## Red Flags — STOP
+`reference/setup.md` holds the `Base` and its Alembic naming convention, the `lru_cache`d async engine and session factory, the `get_session` and `open_db_session` providers, and `get_alembic_config`. Load it when wiring a new project or changing session or transaction ownership.
 
-These mean the database boundary is drifting. Stop and apply the named rule:
+`reference/testing.md` holds the testcontainers Postgres fixture, the migration-backed engine fixture that shares its connection with Alembic, and the function-scoped rollback `session` fixture. Load it when setting up or debugging database tests. Run the tests against a real Postgres container; SQLite and mocked sessions do not have the constraints, types or cascade behaviour these patterns rely on.
 
-| About to… | Rule to apply |
-|---|---|
-| Add `Column(...)` instead of `Mapped[]` / `mapped_column()` | Models — use SQLAlchemy 2.0 style |
-| Leave `String` length implicit | Models — match schema `max_length` with explicit `String(N)` |
-| Add unnamed constraints | Models — every constraint needs a stable Alembic name |
-| Declare `relationship(...)` without `lazy='raise'` | Loading relationships — every relationship is opt-in per query; no implicit loads |
-| Touch a relationship attribute that the originating query did not eager-load | Loading relationships — add `.options(joinedload(...))` (to-one on a single fetch) or `.options(selectinload(...))` (collections, or any to-one on a list) to the query, do not work around the error |
-| Use `joinedload` on a collection, or on a many-to-one in a list / paginated query | Loading relationships — both blow up (row duplication / `LIMIT` subquery wrap, or re-transmitting shared parents); use `selectinload`. `joinedload` is only for one-to-one, or a to-one on a single-object fetch |
-| Call `.unique()` on a query result | Loading relationships — `.unique()` is only needed when `joinedload` is used on a collection, which is forbidden; if you see `.unique()`, that's a signal to drop `joinedload` and switch to `selectinload` |
-| Soften `lazy='raise'` to `'select'` / `'raise_on_sql'` to make an error go away | Loading relationships — the rule stands; fix the originating query, do not weaken the model |
-| Hand-write a migration without autogenerate | Migrations — run `make migration MSG="..."` first |
-| Add a repository layer between services and SQLAlchemy | Usage — services own queries directly |
-| Paginate with manual `limit` / `offset` math | Pagination — use `apaginate()` with a transformer |
-| Use `==` for requested case-insensitive text search | Filtering — use `icontains` / `ilike` |
-| Move request-scoped `commit()` / `rollback()` from the session provider into CRUD service methods | Setup — keep request transaction ownership in `open_db_session()`; see `reference/setup.md` |
-| Wrap a single-statement CRUD write in `begin_nested()` / SAVEPOINT for "safety" or "test rollback" | Service Query Patterns — `begin_nested()` is for partial rollback inside a larger transaction; for test isolation use `join_transaction_mode='create_savepoint'` in the fixture |
-| Replace Postgres tests with SQLite or mocks | Testing — use testcontainers; see `reference/testing.md` |
+## Common mistakes
+
+| Mistake | Do instead | Why |
+|---|---|---|
+| `Column(...)` in a model | `Mapped[T] = mapped_column(...)` | Only the annotated form gives the type checker and `ty` a real column type |
+| `String` with no length | `String(N)` matching the schema's `max_length`, or `Text` for unbounded prose | Unbounded `VARCHAR` accepts anything validation missed, and the column then disagrees with the schema's `max_length` |
+| `passive_deletes=True` with a plain `ForeignKey` | Add `ondelete='CASCADE'` to the child foreign key | The ORM leaves the children to the database, and a Core `delete()` then hits the constraint |
+| Relaxing `lazy='raise'` to silence an error | Add the `.options(...)` to the query that fetched the object | The model change hides every other missing load too |
+| `joinedload` for a to-one inside a list query | `selectinload` | The join repeats each shared parent's columns on every child row |
+| Composite constraint, or any `CheckConstraint`, without `name=` | Explicit `name=` in `__table_args__` | The `uq` template interpolates only the first column, so two such constraints collide, and the `ck` template has nothing to interpolate at all |
+| `commit()` or `rollback()` in a request-scoped service | Leave the transaction to `open_db_session()` | Two owners means a half-written request can still be committed |
 
 ## Gotchas
 
-- Always include `session` fixture in test signatures even if the test doesn't query the DB directly — it sets up transaction rollback
-- All constraints need explicit `name` in `__table_args__` — Alembic needs stable names across environments
-- `get_settings().DATABASE_URL` returns a `PostgresDsn` object — call `.unicode_string()` when a plain string is needed
-- `expire_on_commit=False` on the session factory prevents attribute-expiration errors after commit
+- A unique constraint over a nullable column does nothing by default, because PostgreSQL treats every NULL as distinct. `postgresql_nulls_not_distinct=True` renders `UNIQUE NULLS NOT DISTINCT` and makes the constraint fire.
+- `insert(...).returning(...)` run through `session.scalar()` reaches the server immediately, so the row is visible to the rest of the transaction with no `flush()`.
+- `update(...).values()` with an empty mapping compiles. On a model with `onupdate=func.now()` it executes as `UPDATE books SET updated_at=now()`, bumping the timestamp on a PATCH that changed nothing; without an `onupdate` column it reaches the server as `UPDATE books SET ` and fails with `syntax error at end of input`. That is why `patch_book` returns early when nothing was set.
+- `Result.unique()` is only needed when a `joinedload` targets a collection. Seeing it anywhere else usually means a `joinedload` should have been a `selectinload`.

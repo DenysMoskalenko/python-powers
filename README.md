@@ -10,16 +10,16 @@ The main artifact is the [`skills/`](skills/) directory. Each skill is a focused
 
 | Skill | Use it for |
 | --- | --- |
-| [`python-code-style`](skills/python-code-style/SKILL.md) | Python 3.13+ style, typing, naming, dependency injection, model-first data design, and general architecture rules. |
-| [`python-tooling`](skills/python-tooling/SKILL.md) | uv, ruff, ty, pytest configuration, pre-commit hooks, optional Makefile wrappers, and CI quality jobs. |
-| [`python-testing`](skills/python-testing/SKILL.md) | FastAPI API-level testing, pytest fixtures, polyfactory factories, dependency overrides, and assertion patterns. |
-| [`fastapi-service`](skills/fastapi-service/SKILL.md) | FastAPI routes, services, schemas, settings, exception handling, and dependency wiring without a repository layer. |
-| [`postgres-database`](skills/postgres-database/SKILL.md) | PostgreSQL, SQLAlchemy 2.0 async, Alembic migrations, service-owned queries, and testcontainers-backed database tests. |
-| [`ai-agents`](skills/ai-agents/SKILL.md) | pydantic-ai agents in FastAPI services, typed dependencies, tools, model registry patterns, provider mapping, and tests. |
-| [`project-scaffolding`](skills/project-scaffolding/SKILL.md) | Generating a brand-new FastAPI service from the BoilerplateBuilder template with tests, linters, CI, and Docker working from the first commit. Greenfield only. |
-| [`skill-writer`](skills/skill-writer/SKILL.md) | House rules for adding, editing, splitting, or reviewing skills in this repository. |
+| [`python-code-style`](skills/python-code-style/SKILL.md) | Python 3.13+ application and library style: typing, model-first data design, naming, dependency injection, fail-fast discipline, and architecture principles. |
+| [`python-tooling`](skills/python-tooling/SKILL.md) | uv workflow, ruff, ty, complexipy, pytest and coverage configuration, prek hooks, direct commands behind the Makefile targets, CI jobs, and the warnings policy. |
+| [`python-testing`](skills/python-testing/SKILL.md) | FastAPI API-level testing with httpx2, the app and client fixtures, polyfactory factories, data helpers, dependency-override utilities, assertion patterns, flaky-test triage, and the coverage policy. |
+| [`fastapi-service`](skills/fastapi-service/SKILL.md) | FastAPI routes, query-parameter models, PATCH semantics, services, schemas, settings, lifespan, exception handlers, and dependency wiring without a repository layer. |
+| [`postgres-database`](skills/postgres-database/SKILL.md) | PostgreSQL 18, SQLAlchemy 2.0 async models and loading strategy, service-owned queries, Alembic migrations, and testcontainers-backed database fixtures. |
+| [`ai-agents`](skills/ai-agents/SKILL.md) | pydantic-ai 2.x agents in FastAPI services: typed dependencies, tools, instructions, model registry with FallbackModel, provider error mapping, conversations and streaming, and tests. |
+| [`project-scaffolding`](skills/project-scaffolding/SKILL.md) | Generating a brand-new FastAPI service from a pinned BoilerplateBuilder revision with tests, linters, CI, and Docker working from the first commit. Greenfield HTTP services only — not CLIs, libraries, scripts, or features in an existing project. |
+| [`skill-writer`](skills/skill-writer/SKILL.md) | House rules for adding, editing, splitting, or reviewing skills in this repository, and for writing their eval cases. |
 
-Some skills include additional reference material linked from their main guide.
+Some skills include additional reference material linked from their main guide. Every code example comes from a project that passes its quality gate on current library releases; feature modules live in `app/domains/<feature>/`, the layout the scaffolding template generates.
 
 ## How To Use
 
@@ -40,6 +40,10 @@ Typical combinations:
 | Add an AI assistant endpoint to a service | `python-code-style`, `fastapi-service`, `ai-agents`, `python-testing` |
 | Change linting, typing, dependencies, or test commands | `python-tooling` |
 | Edit one of this repository's skills | `skill-writer` plus the skill being changed |
+
+## Evals
+
+`evals/` holds runnable trigger and behaviour cases plus a headless runner (`python3 evals/run_evals.py`) that loads the plugin into a fresh scratch project, checks which skill fired, and grades the code the agent wrote with and without the skill. See [`evals/README.md`](evals/README.md). The human-readable specification behind the cases is [`evals/scenarios.md`](evals/scenarios.md); `uv run evals/check_skills.py` is the static check (frontmatter, line budgets, links, code fences, manifests) and spends no API calls.
 
 ## Install As A Claude Code Plugin
 
@@ -106,6 +110,14 @@ For local testing, copy or symlink this repository to:
 
 Then restart Cursor or run `Developer: Reload Window`.
 
+## Install With The Skills CLI
+
+Any agent that supports the Agent Skills format (Copilot, Gemini CLI, OpenCode, and others) can pull the `skills/` tree directly:
+
+```bash
+npx skills add DenysMoskalenko/python-powers
+```
+
 ## Principles
 
 - Keep guidance reusable across Python services.
@@ -120,7 +132,7 @@ Changes should improve shared, reusable Python engineering guidance. Good contri
 
 Avoid adding app-specific conventions, one-off team workflows, unproven tool recommendations, or claims about CI and release processes that are not represented in this repository.
 
-When changing a skill, read [`skills/skill-writer/SKILL.md`](skills/skill-writer/SKILL.md) first and keep the edit scoped to that skill's ownership.
+When changing a skill, read [`skills/skill-writer/SKILL.md`](skills/skill-writer/SKILL.md) first and keep the edit scoped to that skill's ownership. Before opening a pull request run `uv run evals/check_skills.py`, `claude plugin validate .` (which checks only the marketplace manifest), and the eval cases for the touched skill (they spend API calls; see [`evals/README.md`](evals/README.md)).
 
 ## License
 

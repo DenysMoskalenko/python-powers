@@ -1,74 +1,72 @@
 ---
 name: ai-agents
-description: Use when adding an LLM, assistant, or chatbot endpoint to a FastAPI service, or when building, integrating, or testing pydantic-ai agents — defining the Agent, typed dependencies, tools, system prompts, model registry, agent-as-FastAPI-dependency wiring, or agent test fixtures (TestModel, FunctionModel, provider error mapping).
+description: Use when adding an LLM, assistant, or chatbot endpoint to a FastAPI service, or when building or testing pydantic-ai agents — the Agent, instructions, typed deps, tools, model registry with FallbackModel, streaming and message history, ModelHTTPError mapping, and agent test fixtures (TestModel, FunctionModel). pydantic-ai only; in a project already on another framework, follow that framework.
 ---
 
 # AI Agent Patterns
 
-Patterns for building pydantic-ai agents integrated into FastAPI services. An agent is a module like any other (`app/modules/<module>/`) — only its internals (builder, tools, prompt, agent/tool schemas) are agent-specific.
+Patterns for pydantic-ai agents that run inside a FastAPI request. An agent is one feature slice like any other: builder, tools, instructions, service, route and schemas live together under `app/domains/<feature>/`, and only the internals are agent-specific. Model and provider wiring stays in `app/infrastructure/llms/`. An explicit instruction from the user or the project (`AGENTS.md`, `pyproject.toml`, existing code) overrides any house default here; keep the invariants that still apply, follow the instruction for the rest, and name the default you departed from.
 
-> Requires Python 3.13+, pydantic-ai, FastAPI.
-> Examples use `app/` as the top-level package (the reference project's convention). Substitute your package name if different.
+> Requires Python 3.13+, pydantic-ai 2.x (pydantic-ai-slim with the provider extras you use), FastAPI.
+> Examples use `app/` as the top-level package and `app/domains/<feature>/` for feature modules. Substitute your names if different.
 
-**Related**: `python-code-style`, `fastapi-service`, `python-testing`, `project-scaffolding`.
+**Related**: `python-code-style` defines the naming used here (`<Entity>Model`, `_logger`, `*Error`); load it alongside. Also `fastapi-service`, `python-testing`, `project-scaffolding`.
 
-For generic FastAPI route/service patterns use `fastapi-service`. For database queries use `postgres-database`. For shared test infrastructure use `python-testing`.
+## Domain layout
 
-## Module layout
-
-An agent is a module like any other feature — its builder, tools, prompt, service, route, and schemas live together in one slice. Here, `catalog_assistant`:
+The example is a `catalog_assistant` domain whose tools answer from a sibling `catalog` domain's `CatalogService`.
 
 ```text
-modules/catalog_assistant/
-  routes.py            # thin route handler
-  service.py           # runs the agent with assembled deps
+app/domains/catalog_assistant/
+  routes.py            # thin handler; injects the agent
+  service.py           # runs the agent with assembled deps and usage limits
   agents.py            # build_*_agent (builder) + get_*_agent (FastAPI dependency)
-  prompts.py           # system prompt text
-  schemas/             # grew to a subpackage — API contract vs agent/tool I/O
+  prompts.py           # instructions text
+  schemas/
     __init__.py        # facade re-exporting both files
-    schemas_api.py     # request/response + model-name enum (the HTTP contract)
+    schemas_api.py     # request/response — the HTTP contract, and the agent's output_type
     schemas_agent.py   # agent deps + tool input/output models
+app/core/enums.py      # AssistantModelName — the model names a caller may ask for
+app/infrastructure/llms/
+  registry.py          # model name → constructed Model
+  provider_openai.py, provider_bedrock.py   # provider clients and providers
 ```
 
-Model and provider wiring stays in `app/infrastructure/llms/`.
+The model-name enum lives in `app/core/enums.py`, not in the domain, so `app/infrastructure/llms/registry.py` never imports from `app/domains/`.
 
 ## Agent dependencies
 
-Define agent dependencies as a frozen dataclass in `schemas/schemas_agent.py`. The agent receives these at runtime via `deps`:
+Tools reach their collaborators through `ctx.deps`, so the deps object is the agent's whole injection surface — services, config, a session, nothing else.
 
 ```python
 from dataclasses import dataclass
 
-from app.modules.catalog.service import CatalogService
+from app.domains.catalog.service import CatalogService
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class CatalogAssistantDeps:
     catalog_service: CatalogService
 ```
 
-- `frozen=True` — immutable, safe for concurrent use
-- `slots=True` — memory efficient
-- Include only what the agent's tools need (services, config, session)
+## Building the agent
 
-## Agent factory
-
-`agents.py` holds two functions: the **builder** below (`build_catalog_assistant_agent`), which takes a ready `Model` so tests can pass `TestModel()`, and the **FastAPI dependency** (`get_catalog_assistant_agent`, further down). The builder:
+The builder takes an already-constructed `Model`, so a test hands it `TestModel()` and the same code path runs. Register tools inside the builder with `@agent.tool`.
 
 ```python
-from fastapi_pagination import Params
 from pydantic_ai import Agent, ModelSettings, RunContext
 from pydantic_ai.models import Model
 
-from app.modules.catalog.schemas import CatalogListSorting
-from app.modules.catalog_assistant.prompts import CATALOG_ASSISTANT_SYSTEM_PROMPT
-from app.modules.catalog_assistant.schemas import (
+from app.domains.catalog.schemas import CatalogListFilters
+from app.domains.catalog_assistant.prompts import CATALOG_ASSISTANT_INSTRUCTIONS
+from app.domains.catalog_assistant.schemas import (
     CatalogAssistantDeps,
     CatalogAssistantResponse,
     CatalogToolItem,
-    CountCatalogItemsToolInput,
     ListCatalogItemsToolInput,
 )
+
+CATALOG_ASSISTANT_MODEL_SETTINGS = ModelSettings(max_tokens=2048, thinking='low')
 
 
 def build_catalog_assistant_agent(model: Model) -> Agent[CatalogAssistantDeps, CatalogAssistantResponse]:
@@ -76,61 +74,42 @@ def build_catalog_assistant_agent(model: Model) -> Agent[CatalogAssistantDeps, C
         model=model,
         output_type=CatalogAssistantResponse,
         deps_type=CatalogAssistantDeps,
-        system_prompt=CATALOG_ASSISTANT_SYSTEM_PROMPT,
-        retries=0,
-        model_settings=ModelSettings(max_tokens=2048, thinking='low', temperature=0.7),
+        instructions=CATALOG_ASSISTANT_INSTRUCTIONS,
+        model_settings=CATALOG_ASSISTANT_MODEL_SETTINGS,
     )
 
     @agent.tool
-    async def count_items(ctx: RunContext[CatalogAssistantDeps], payload: CountCatalogItemsToolInput) -> int:
-        return await ctx.deps.catalog_service.count_items(payload.filters)
+    async def count_items(
+        ctx: RunContext[CatalogAssistantDeps], category: str | None = None, name_contains: str | None = None
+    ) -> int:
+        """Count catalog items matching the given filters.
+
+        Args:
+            category: Restrict the count to one catalog category, for example `hardware`.
+            name_contains: Restrict the count to items whose name contains this case-insensitive text.
+        """
+        filters = CatalogListFilters(category=category, name_contains=name_contains)
+        return await ctx.deps.catalog_service.count_items(filters)
 
     @agent.tool
     async def list_items(
         ctx: RunContext[CatalogAssistantDeps], payload: ListCatalogItemsToolInput
     ) -> list[CatalogToolItem]:
-        items_page = await ctx.deps.catalog_service.list_items(
-            payload.filters,
-            CatalogListSorting(sort_by='name', sort_order='asc'),
-            pagination_params=Params(page=1, size=payload.limit),
-        )
-        return [CatalogToolItem.model_validate(item, from_attributes=True) for item in items_page.items]
+        """List catalog items matching the given filters, ordered by name."""
+        items = await ctx.deps.catalog_service.list_items(payload.filters, payload.limit)
+        return [CatalogToolItem.model_validate(item, from_attributes=True) for item in items]
 
     return agent
 ```
 
-Key patterns:
-- `Agent[Deps, Output]` — fully typed with dependency and output types
-- Tools registered with `@agent.tool` inside the builder — each tool gets `RunContext[Deps]`
-- Tool inputs are Pydantic `BaseModel` subclasses — the LLM sees their JSON schema
-- Tools call services from `ctx.deps`, never import globals
-- `retries=0` to fail fast; retries mask real failures in tests and production alike
+`retries` stays at the library default. It budgets tool-argument and output validation retries — the `ModelRetry` loop that lets the model correct a malformed tool call — and never provider or transport errors, which surface on the first attempt whatever the budget says. `retries=0` therefore turns one malformed tool call, a routine model event, into a 500.
 
-## Tool input schemas
+Agent-level `ModelSettings` carries what the workload needs: `max_tokens` from the response contract, and `thinking` as the unified effort level when the workload wants reasoning. Leave `temperature` and the other sampling settings out of it, because providers disagree on what to do with them: OpenAI and Anthropic drop them client-side with a warning once reasoning is on, Anthropic's newest models drop them whether reasoning is on or not, and Bedrock forwards them verbatim and leaves the provider to reject the call. Set sampling per workload once the target model is known, on the `Model` in the registry.
 
-Tool parameters are Pydantic models. The LLM sees them as function parameter schemas. They live in `schemas/schemas_agent.py` alongside the deps and tool-output models — kept apart from `schemas_api.py` (the HTTP request/response contract):
+## Instructions
 
 ```python
-from pydantic import BaseModel, Field
-
-from app.modules.catalog.schemas import CatalogListFilters
-
-
-class CountCatalogItemsToolInput(BaseModel):
-    filters: CatalogListFilters = Field(default_factory=CatalogListFilters)
-
-
-class ListCatalogItemsToolInput(BaseModel):
-    filters: CatalogListFilters = Field(default_factory=CatalogListFilters)
-    limit: int = Field(default=20, ge=1, le=100)
-```
-
-## System prompts
-
-Keep system prompts in a separate `prompts.py` module. Write them as rules, not descriptions:
-
-```python
-CATALOG_ASSISTANT_SYSTEM_PROMPT = """
+CATALOG_ASSISTANT_INSTRUCTIONS = """
 You are a read-only assistant for a service catalog API.
 
 Rules:
@@ -141,48 +120,73 @@ Rules:
 """.strip()
 ```
 
-Rules outperform descriptions ("Use X for Y" beats "You can use X").
+`instructions=` is the house default because instructions belong to the agent that is running: they go on the wire once per turn, and a different agent resuming the same conversation sends its own. `system_prompt=` parts are replayed from `message_history`, so a history that already carries one shadows the current agent's prompt and the model reads the stale text. Use `system_prompt=` only when replaying the original prompt is the point.
+
+Write instructions as rules ("Use `count_items` for counts") rather than descriptions ("You can count items"), and name the case where no tool should be called.
+
+## Tool schemas
+
+A tool definition is a prompt the model reads before choosing. The docstring summary line becomes the tool description; keep it to one line saying what the tool does. Where the argument descriptions come from depends on how the arguments are declared:
+
+- Plain parameters, as in `count_items`, take theirs from a Google-style `Args:` block, which pydantic-ai parses into the parameter schema.
+- A single `BaseModel` parameter is flattened into the tool schema: `payload` disappears and the model's own fields become the tool's parameters. The parameter name is invisible to the model, so an `Args:` entry for it documents a name nobody sees. Put the prose in `Field(description=...)` on the model instead.
+
+```python
+from pydantic import BaseModel, Field
+
+from app.domains.catalog.schemas import CatalogListFilters
+
+
+class ListCatalogItemsToolInput(BaseModel):
+    filters: CatalogListFilters = Field(
+        default_factory=CatalogListFilters, description='Restrict the listing by category and by name substring.'
+    )
+    limit: int = Field(default=20, ge=1, le=100, description='Maximum number of items to return.')
+
+
+class CatalogToolItem(BaseModel):
+    sku: str
+    name: str
+    category: str
+```
+
+Constraints travel with the field: `ge`/`le` reach the model as `minimum`/`maximum`, which is cheaper than asking for the bound in prose.
 
 ## Model registry
 
-A `TypeAlias` mapping request model names to fully constructed `Model` instances, defined in `agents.py`. Keep provider wiring in `infrastructure/llms/`:
-
-```python
-from typing import Annotated, TypeAlias
-
-from fastapi import Depends
-from pydantic_ai.models import Model
-
-from app.infrastructure.llms.registry import get_fallback_model, get_primary_model
-from app.modules.catalog_assistant.schemas import AssistantModelName
-
-ModelRegistry: TypeAlias = dict[AssistantModelName, Model]
-
-
-def get_model_registry(
-    primary_model: Annotated[Model, Depends(get_primary_model)],
-    fallback_model: Annotated[Model, Depends(get_fallback_model)],
-) -> ModelRegistry:
-    return {
-        AssistantModelName.PRIMARY: primary_model,
-        AssistantModelName.FALLBACK: fallback_model,
-    }
-```
-
-Use `StrEnum` for model names — serializes cleanly in JSON. It belongs in `schemas/schemas_api.py` (part of the request contract):
+Callers choose a model by an abstract name, never by a provider model id.
 
 ```python
 from enum import StrEnum
 
 
 class AssistantModelName(StrEnum):
-    PRIMARY = 'primary'
-    FALLBACK = 'fallback'
+    DEFAULT = 'default'
+    FAST = 'fast'
 ```
 
-## Agent as FastAPI dependency
+The concrete ids are plain `str` fields in `Settings` (`ASSISTANT_DEFAULT_MODEL_ID`, `ASSISTANT_FAST_MODEL_ID`), so pointing the service at a model released next week is an environment change rather than a code change. `app/infrastructure/llms/registry.py` maps each name to a constructed `Model`, and the enum enters the HTTP contract in `schemas_api.py`, which is where the agent dependency reads the choice from:
 
-The dependency sits in the same `agents.py` as the builder and `get_model_registry`. It reads the request payload to select the model, then calls the builder:
+```python
+from pydantic import BaseModel, Field
+
+from app.core.enums import AssistantModelName
+
+
+class CatalogAssistantRequest(BaseModel):
+    model: AssistantModelName
+    question: str = Field(min_length=1, max_length=2_048)
+
+
+class CatalogAssistantResponse(BaseModel):
+    answer: str = Field(min_length=1)
+```
+
+The agent's `output_type` lives here with the HTTP contract because it usually is the response. When the endpoint adds a field of its own, keep the agent's model as the base and derive the response from it (`class CatalogConversationResponse(CatalogAssistantResponse): conversation_id: UUID`), so the agent never learns about HTTP.
+
+Load `reference/providers.md` for the registry itself, provider wiring, provider-specific settings on the `Model`, `FallbackModel` failover, and mapping provider errors to HTTP status codes.
+
+## Agent as a FastAPI dependency
 
 ```python
 from typing import Annotated
@@ -190,36 +194,61 @@ from typing import Annotated
 from fastapi import Depends
 from pydantic_ai import Agent
 
-from app.modules.catalog_assistant.schemas import (
+from app.domains.catalog_assistant.schemas import (
     CatalogAssistantDeps,
     CatalogAssistantRequest,
     CatalogAssistantResponse,
 )
+from app.infrastructure.llms.registry import get_model_registry, ModelRegistry
 
 
-def get_catalog_assistant_agent(
+async def get_catalog_assistant_agent(
     payload: CatalogAssistantRequest,
     model_registry: Annotated[ModelRegistry, Depends(get_model_registry)],
 ) -> Agent[CatalogAssistantDeps, CatalogAssistantResponse]:
     return build_catalog_assistant_agent(model_registry[payload.model])
 ```
 
-## Agent service
+The route injects the agent alongside the service and stays thin, as in `fastapi-service`:
 
-A thin service that calls `agent.run()` with the assembled deps:
+```python
+router = APIRouter(tags=['Catalog Assistant'])
+
+CatalogAssistantAgent = Annotated[
+    Agent[CatalogAssistantDeps, CatalogAssistantResponse], Depends(get_catalog_assistant_agent)
+]
+
+
+@router.post('/assistants/conversations')
+async def create_response(
+    payload: CatalogAssistantRequest,
+    service: Annotated[CatalogAssistantService, Depends()],
+    agent: CatalogAssistantAgent,
+) -> CatalogAssistantResponse:
+    return await service.answer(payload, agent)
+```
+
+Declaring `payload` in both the route and the dependency does not add a second body field; FastAPI dedupes the read and the OpenAPI request body stays a bare `$ref`. Keep the dependency `async def` so it is not dispatched to a threadpool for a dict lookup.
+
+Rebuilding the agent per request is what buys per-request model selection, and it keeps the agent reachable through `agent.override()` in tests. The alternative is one module-level agent built at import time with the model chosen per call (`agent.run(question, model=registry[payload.model], deps=...)`); take it when the model is fixed per deployment. The service takes the agent as a method argument rather than a constructor collaborator because it is chosen per request from `payload.model`, while the service's own constructor is resolved before the body is read.
+
+## Running the agent
 
 ```python
 from typing import Annotated
 
 from fastapi import Depends
 from pydantic_ai import Agent
+from pydantic_ai.usage import UsageLimits
 
-from app.modules.catalog.service import CatalogService
-from app.modules.catalog_assistant.schemas import (
+from app.domains.catalog.service import CatalogService
+from app.domains.catalog_assistant.schemas import (
     CatalogAssistantDeps,
     CatalogAssistantRequest,
     CatalogAssistantResponse,
 )
+
+CATALOG_ASSISTANT_USAGE_LIMITS = UsageLimits(request_limit=5)
 
 
 class CatalogAssistantService:
@@ -231,64 +260,40 @@ class CatalogAssistantService:
         payload: CatalogAssistantRequest,
         agent: Agent[CatalogAssistantDeps, CatalogAssistantResponse],
     ) -> CatalogAssistantResponse:
-        result = await agent.run(payload.question, deps=CatalogAssistantDeps(catalog_service=self._catalog_service))
+        result = await agent.run(
+            payload.question,
+            deps=self._build_deps(),
+            usage_limits=CATALOG_ASSISTANT_USAGE_LIMITS,
+        )
         return result.output
+
+    def _build_deps(self) -> CatalogAssistantDeps:
+        return CatalogAssistantDeps(catalog_service=self._catalog_service)
 ```
 
-## Agent route
+`request_limit` caps the model requests one run may make, so a model that keeps calling the same tool stops instead of looping. Exceeding it raises `UsageLimitExceeded`; map it to 503 in `app/core/exception_handlers.py`, because the request was well formed and a 4xx would tell the caller to fix something that is not wrong. `UsageLimits` also carries `tool_calls_limit`, `output_tokens_limit`, `total_tokens_limit` and `cost_limit`, all raising the same `UsageLimitExceeded`; add one when a tool is expensive or the answer has a hard size budget.
 
-The route injects both service and agent, delegates to the service:
+## Reference files
 
-```python
-from typing import Annotated
+- `reference/conversations.md` — multi-turn runs with `message_history`, the conversation endpoint that persists and resumes a transcript, and streaming an answer. Load it when the endpoint remembers previous turns or streams its response.
+- `reference/testing.md` — blocking real provider calls, the reusable test-agent fixture, fixed answers with `TestModel`, failures and tool-call sequences with `FunctionModel`, and per-test overrides. Load it when writing or fixing agent tests.
 
-from fastapi import APIRouter, Depends
-from pydantic_ai import Agent
+## Common mistakes
 
-from app.modules.catalog_assistant.agents import get_catalog_assistant_agent
-from app.modules.catalog_assistant.schemas import (
-    CatalogAssistantDeps,
-    CatalogAssistantRequest,
-    CatalogAssistantResponse,
-)
-from app.modules.catalog_assistant.service import CatalogAssistantService
-
-router = APIRouter(tags=['Catalog Assistant'])
-
-
-@router.post('/assistants/conversations')
-async def create_response(
-    payload: CatalogAssistantRequest,
-    service: Annotated[CatalogAssistantService, Depends()],
-    agent: Annotated[Agent[CatalogAssistantDeps, CatalogAssistantResponse], Depends(get_catalog_assistant_agent)],
-) -> CatalogAssistantResponse:
-    return await service.answer(payload, agent)
-```
-
-## Testing
-
-See `reference/testing.md` for the full test pattern: blocking real model requests, `TestModel` fixture, `FunctionModel` for deterministic responses, and `agent.override()` for per-test model swaps.
-
-## Provider-specific behavior
-
-See `reference/providers.md` for provider-specific model settings (Bedrock caching) and provider error mapping tests (Bedrock `ClientError`, OpenAI `RateLimitError` → HTTP status mapping).
-
-## Red Flags — STOP
-
-These mean the agent boundary is drifting. Stop and apply the named rule:
-
-| About to… | Rule to apply |
-|---|---|
-| Import a service directly inside an agent tool | Agent dependencies — tools use `ctx.deps` only |
-| Write a system prompt as "You can use..." | System prompts — write rules as "Use X for Y" |
-| Set `retries > 0` on the agent | Agent factory — use `retries=0` so failures surface |
-| Instantiate provider models inside the model registry | Model registry — delegate provider wiring to `infrastructure/llms/` |
-| Let tests run without `ALLOW_MODEL_REQUESTS = False` | Testing — block real model requests globally |
-| Resolve output tools in mocks by list index | Testing — resolve output tools by schema keys |
+| Mistake | Do instead | Why |
+|---|---|---|
+| `system_prompt=` on a new agent | `instructions=` | A history carrying a system prompt shadows the agent's own, so the model reads the stale one |
+| `retries=0` to make failures surface | Leave `retries` at the default | It budgets validation retries only; zero turns one malformed tool call into a 500, and provider errors are never retried anyway |
+| `temperature` in the agent's `ModelSettings` | Set sampling per workload on the `Model` | One provider drops it with a warning, another forwards it into a rejected call |
+| `isinstance(model, BedrockConverseModel)` in the builder to add provider flags | Pass `settings=` to the `Model` in the registry | The builder stays provider-agnostic, and model-level settings merge under the agent's |
+| Provider model ids as `Literal[...]` in `Settings` | Plain `str` fields | A new model id becomes an environment change instead of a code change |
+| Importing a service inside a tool | Take it from `ctx.deps` | A module-level import cannot be substituted in a test |
+| A tool with no docstring, or an `Args:` entry for a single `BaseModel` parameter | One-line docstring plus `Field(description=...)` on the model | The flattened parameter name never reaches the model, so its `Args:` entry documents nothing |
+| Handling `openai.RateLimitError` or `botocore.ClientError` in the app | Handle `ModelHTTPError` and `ModelAPIError` | pydantic-ai normalizes provider API errors, so the SDK ones never arrive; Bedrock transport failures (botocore's `BotoCoreError`) are the exception and still need a catch-all |
+| `agent.run(...)` with no `usage_limits` | Pass `UsageLimits(request_limit=...)` | The library default is 50 model requests per run; set a limit the endpoint can actually afford |
 
 ## Gotchas
 
-- `ALLOW_MODEL_REQUESTS = False` must be in `pytest_configure` before any agent import
-- Agent tools access services through `ctx.deps` only — never import at module level
-- `agent.override()` is scoped to a `with` block; original model is restored automatically
-- Provider-specific model settings (e.g., `BedrockModelSettings`) require `isinstance` checks
+- `CatalogAssistantService` reaches the route as `Annotated[CatalogAssistantService, Depends()]`, so it may take only injectable `__init__` parameters; `fastapi-service` explains what an ordinary defaulted parameter does to the endpoint.
+- `Agent(instrument=True)` no longer exists and raises `TypeError`. Use `Agent.instrument_all(...)`, `agent.instrument = ...`, or `capabilities=[Instrumentation()]`.
+- `agent.override()` takes `model`, `deps`, `toolsets`, `tools`, `native_tools`, `instructions`, `model_settings` and `retries` among others, but not `output_type` — that one is a per-run argument, `agent.run(..., output_type=str)`.

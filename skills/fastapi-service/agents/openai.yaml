@@ -1,0 +1,3 @@
+interface:
+  display_name: "FastAPI Service"
+  short_description: "FastAPI routes, services, schemas, handlers, settings"
