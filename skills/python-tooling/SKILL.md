@@ -140,7 +140,7 @@ Warnings that predate your change and have nothing to do with it are not yours t
 
 | Mistake | Do instead | Why |
 |---|---|---|
-| `pip install`, or a version typed by hand in `pyproject.toml` | `uv add <pkg>` / `uv add --group dev <pkg>` | pip writes nothing to the lock file; a hand-typed version is a guess |
+| `pip install`, or a dependency typed by hand in `pyproject.toml` | `uv add <pkg>` / `uv add --group dev <pkg>` | pip writes nothing to the lock file; a hand-typed entry stays unlocked until someone runs `uv sync`, and a hand-typed version is a guess |
 | `# type: ignore[assignment]` to quiet ty | `# ty: ignore[<rule>]` on the reported line | mypy codes suppress nothing in ty |
 | `filterwarnings = ["ignore::DeprecationWarning"]` | An entry scoped to message, category and module | The broad form also swallows the next warning |
 
