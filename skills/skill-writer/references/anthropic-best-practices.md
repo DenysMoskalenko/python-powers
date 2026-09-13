@@ -7,9 +7,9 @@ Facts from the Agent Skills specification, Anthropic's skill best-practices page
 | Item | Upstream | House |
 |---|---|---|
 | `name` | 1–64 chars, `a-z0-9-`, equals the folder name, no `claude`/`anthropic` | same |
-| `description` | required, ≤1,024 chars; Claude Code lists `description` + `when_to_use` truncated at 1,536 chars; Codex loads name + description under 2% of context or 8,000 chars total | 30–60 words, ≤400 chars, triggers first, then keywords |
-| `SKILL.md` size | under 500 lines and about 5,000 tokens; body loaded on activation | 300 lines, enforced by `evals/check_skills.py` |
-| References | one level deep, linked by relative path, loaded on demand; contents list when long | `reference/<topic>.md`, contents list above 100 lines |
+| `description` | required, ≤1,024 chars, no `<` or `>` anywhere in the frontmatter (claude.ai uploads reject them); Claude Code lists `description` + `when_to_use` truncated at 1,536 chars; Codex loads name + description under 2% of context or 8,000 chars total | 30–60 words, ≤400 chars, triggers first, then keywords, file names and error strings |
+| `SKILL.md` size | under 500 lines and 5,000 words; body loaded on activation | 300 lines and 1,800 words, enforced by `evals/check_skills.py` |
+| References | `references/` (also `scripts/`, `assets/`), one level deep, linked by relative path, loaded on demand; contents list when long; no `README.md` inside the skill folder | `references/<topic>.md`, contents list above 100 lines, same budgets as `SKILL.md` |
 | Spec frontmatter | `name`, `description`, optional `license`, `compatibility`, `metadata`, experimental `allowed-tools` | plus `disable-model-invocation`, `paths`, `when_to_use` (Claude Code / Cursor); `> Requires` in the body instead of `compatibility` |
 | Host-only keys | Claude Code also honours `argument-hint`, `context`, `agent`, `model`, `effort`, `hooks`; claude.ai uploads reject unknown keys; Codex ignores them and reads `agents/openai.yaml` | not used |
 

@@ -126,7 +126,7 @@ async def test_provider_rate_limit_maps_to_429(
     assert response.status_code == 429
 ```
 
-`reference/providers.md` covers the handler side of that mapping, and the harder test that drives a real provider SDK over a mocked transport to prove the normalization.
+`references/providers.md` covers the handler side of that mapping, and the harder test that drives a real provider SDK over a mocked transport to prove the normalization.
 
 A callback that returns a `ToolCallPart` on every turn instead of raising is how a runaway tool loop is tested against `UsageLimits`. To let a run finish instead, the callback calls the output tool by the name pydantic-ai gave it, which arrives on `AgentInfo`:
 

@@ -68,7 +68,7 @@ When adding a new skill:
 
 - First confirm it has at least three distinct, recurring triggers.
 - Prefer extending an existing skill if the topic is narrow or owned by a sibling skill.
-- Add a folder at `skills/<kebab-name>/SKILL.md`; use `reference/` only for supporting
+- Add a folder at `skills/<kebab-name>/SKILL.md`; use `references/` only for supporting
   material that would otherwise make the main file too long.
 - Update related-skill cross-references where they materially help discovery.
 - Add its scenarios to `evals/scenarios.md` and trigger and behavior cases to `evals/cases.json`.
@@ -90,7 +90,7 @@ For every change:
 - Verify links and local paths you touched exist.
 - Run `uv run evals/check_skills.py` when touching a `SKILL.md`, a reference file, or a
   manifest. It parses every frontmatter (one that fails to parse still loads, with an empty
-  description), and checks line budgets, links, code fences, `agents/openai.yaml`, and the
+  description), and checks line and word budgets, links, code fences, `agents/openai.yaml`, and the
   manifests.
 - Run `claude plugin validate .` when touching a manifest; it validates only
   `.claude-plugin/marketplace.json`.

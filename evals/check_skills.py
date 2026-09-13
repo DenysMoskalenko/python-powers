@@ -26,6 +26,7 @@ MANIFESTS = (
 )
 ALLOWED_KEYS = {'name', 'description', 'disable-model-invocation', 'paths', 'when_to_use', 'metadata'}
 MAX_LINES = 300
+MAX_WORDS = 1800
 MAX_DESCRIPTION_CHARS = 400
 DESCRIPTION_WORDS = range(30, 61)
 MISTAKES_HEADING = '## Common mistakes'
@@ -33,7 +34,7 @@ MISTAKES_HEADER = '| Mistake | Do instead | Why |'
 FRONTMATTER = re.compile(r'\A---\n(.*?)\n---\n', re.DOTALL)
 FENCE = re.compile(r'^\s*```(.*)$')
 LINK = re.compile(r'\]\(([^)\s]+)\)')
-REFERENCE_MENTION = re.compile(r'((?:skills/[\w-]+/)?reference/[\w.-]+\.md)')
+REFERENCE_MENTION = re.compile(r'((?:skills/[\w-]+/)?references/[\w.-]+\.md)')
 
 
 def check_frontmatter(skill: Path, text: str) -> list[str]:
@@ -46,7 +47,11 @@ def check_frontmatter(skill: Path, text: str) -> list[str]:
         return [f'frontmatter is not valid YAML: {exc}']
     if not isinstance(meta, dict):
         return ['frontmatter is not a mapping']
-    problems = [f'unknown frontmatter key {key!r}' for key in sorted(meta.keys() - ALLOWED_KEYS)]
+    if '<' in match.group(1) or '>' in match.group(1):
+        problems_prefix = ['frontmatter contains < or >, which claude.ai uploads reject']
+    else:
+        problems_prefix = []
+    problems = [*problems_prefix, *(f'unknown frontmatter key {key!r}' for key in sorted(meta.keys() - ALLOWED_KEYS))]
     if meta.get('name') != skill.name:
         problems.append(f'name {meta.get("name")!r} does not match the folder name {skill.name!r}')
     description = meta.get('description')
@@ -61,9 +66,12 @@ def check_frontmatter(skill: Path, text: str) -> list[str]:
 
 
 def check_markdown(path: Path, skill: Path, text: str) -> list[str]:
-    """Line budget, language tag on every fence, and every relative link or reference/ mention resolving."""
+    """Line and word budgets, language tag on every fence, and every relative link or references/ mention resolving."""
     lines = text.splitlines()
     problems = [f'{len(lines)} lines, limit {MAX_LINES}'] if len(lines) > MAX_LINES else []
+    words = len(text.split())
+    if words > MAX_WORDS:
+        problems.append(f'{words} words, limit {MAX_WORDS}')
     in_fence = False
     for number, line in enumerate(lines, start=1):
         fence = FENCE.match(line)
@@ -120,11 +128,11 @@ def check_skill(skill: Path) -> list[str]:
         return [f'{skill.name}: SKILL.md is missing']
     text = skill_md.read_text()
     problems = [*check_frontmatter(skill, text), *check_markdown(skill_md, skill, text), *check_mistakes_table(text)]
-    for reference in sorted((skill / 'reference').glob('*.md')):
-        if f'reference/{reference.name}' not in text:
-            problems.append(f'reference/{reference.name} is not linked from SKILL.md')
+    for reference in sorted((skill / 'references').glob('*.md')):
+        if f'references/{reference.name}' not in text:
+            problems.append(f'references/{reference.name} is not linked from SKILL.md')
         problems.extend(
-            f'reference/{reference.name}: {problem}'
+            f'references/{reference.name}: {problem}'
             for problem in check_markdown(reference, skill, reference.read_text())
         )
     problems.extend(check_openai_yaml(skill))

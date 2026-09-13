@@ -222,7 +222,7 @@ EXCEPTION_HANDLERS: ExceptionHandlers = {
 
 Register all four. Starlette resolves a handler by walking the exception's MRO and taking the first match it finds in the mapping, so `ModelHTTPError` reaches its own handler and every other model failure falls through to `ModelAPIError`. A rate limit stays a rate limit; anything else the provider rejected is a 502 because the upstream call failed, not the client's request. The last two entries are not reachable through `ModelAPIError`: `FallbackExceptionGroup` is an `ExceptionGroup`, so a `FallbackModel` in the registry whose members all fail 500s without its own entry, and `UsageLimitExceeded` is an agent error raised before any provider is called.
 
-One parametrized test covers the whole mapping, driving the endpoint through a model that raises. `build_raising_model` and the `test_catalog_assistant_agent` fixture come from `reference/testing.md`:
+One parametrized test covers the whole mapping, driving the endpoint through a model that raises. `build_raising_model` and the `test_catalog_assistant_agent` fixture come from `references/testing.md`:
 
 ```python
 from httpx2 import AsyncClient

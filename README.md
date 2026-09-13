@@ -43,7 +43,7 @@ Typical combinations:
 
 ## Evals
 
-`evals/` holds runnable trigger and behaviour cases plus a headless runner (`python3 evals/run_evals.py`) that loads the plugin into a fresh scratch project, checks which skill fired, and grades the code the agent wrote with and without the skill. See [`evals/README.md`](evals/README.md). The human-readable specification behind the cases is [`evals/scenarios.md`](evals/scenarios.md); `uv run evals/check_skills.py` is the static check (frontmatter, line budgets, links, code fences, manifests) and spends no API calls.
+`evals/` holds runnable trigger and behaviour cases plus a headless runner (`python3 evals/run_evals.py`) that loads the plugin into a fresh scratch project, checks which skill fired, and grades the code the agent wrote with and without the skill. See [`evals/README.md`](evals/README.md). The human-readable specification behind the cases is [`evals/scenarios.md`](evals/scenarios.md); `uv run evals/check_skills.py` is the static check (frontmatter, line and word budgets, links, code fences, manifests) and spends no API calls.
 
 ## Install As A Claude Code Plugin
 
@@ -124,7 +124,7 @@ npx skills add DenysMoskalenko/python-powers
 - Prefer clear ownership over duplicated rules.
 - Use realistic examples that can be adapted into production services.
 - Keep skills terse enough for agents to load and follow.
-- Put supporting material in `reference/` when it would bloat the main skill.
+- Put supporting material in `references/` when it would bloat the main skill.
 
 ## Contributing
 

@@ -62,9 +62,12 @@ Each skill section starts with a `### Triggering` block that tests discovery —
 - "Review this module for code quality"
 - "Is `dict[str, Any]` fine for this payload?"
 - "Write a function that merges these two config objects"
+- "Review `app/domains/pricing/service.py` against our style: it builds its own `httpx.AsyncClient`, returns `dict[str, Any]`, and has a `helpers.py` next to it"
 
 **Should not load**:
 - "Change the ruff config to 120-char lines" → `python-tooling` (no application code is written)
+- "ruff keeps flagging UP007 and UP035 — disable the rules or fix the code?" → `python-tooling` (a tool configuration question)
+- "Add `PATCH /v1/authors/{author_id}`; omitted fields keep their values" → `fastapi-service`
 - "Write the README for this service" → no skill (prose, not Python code)
 
 ### Eval 1 — Reject `Any` and raw `dict`
@@ -169,10 +172,14 @@ Each skill section starts with a `### Triggering` block that tests discovery —
 - "pytest prints a `DeprecationWarning` from testcontainers — what do we do with it?"
 - "Replace black and isort with ruff"
 - "How do I add a Makefile target that runs ty type checking through uv?"
+- "Our existing repo has no CI yet — add a GitHub Actions workflow running ruff, ty and pytest with the coverage gate"
+- "ruff keeps flagging UP007 and UP035 — disable the rules in `pyproject.toml` or fix the code?"
 
 **Should not load**:
 - "Create a brand-new FastAPI service with tests and CI" → `project-scaffolding` (greenfield owns the whole baseline)
+- "Bootstrap a python service in this empty folder: fastapi, postgres, uv, ruff, tests, docker, ci" → `project-scaffolding`
 - "Write tests for the books endpoint" → `python-testing`
+- "Our `tests/conftest.py` rebuilds the app per test; share the app and client fixtures" → `python-testing`
 - "My test suite needs a Postgres container" → `postgres-database`
 
 ### Eval 1 — Adding a dependency
@@ -264,6 +271,9 @@ Each skill section starts with a `### Triggering` block that tests discovery —
 - "This test fails every third run — make it stable" (flaky)
 - "Add a factory for the `BookCreate` schema"
 - "How do I override `get_settings` in one test?"
+- "Our `tests/conftest.py` builds the app fixture with function scope and the suite takes minutes — share the app and client fixtures"
+- "`test_success_filters_by_title` fails one run in ten with `UniqueViolation` and passes on rerun"
+- "Write API tests for `POST /v1/reviews`: success and a 404 for an unknown book, no LLM involved"
 
 **Should not load**:
 - "Set up the testcontainers Postgres fixture" → `postgres-database`
@@ -351,6 +361,8 @@ Each skill section starts with a `### Triggering` block that tests discovery —
 - "Add a new setting for the webhook secret"
 - "Design request/response schemas for the orders feature"
 - "Every request to my list endpoint answers 422 with `Field required`"
+- "Add `PATCH /v1/authors/{author_id}`; omitted fields keep their values and `null` for `name` is rejected"
+- "`POST /assistants/conversations` should answer 422 when `question` is empty or over 2000 characters — where does that go?"
 
 **Should not load**:
 - "Add a `BookModel` with a foreign key to authors" → `postgres-database`
@@ -590,6 +602,8 @@ Each skill section starts with a `### Triggering` block that tests discovery —
 - "Write the factory for the request schema" → `python-testing`
 - "Add an endpoint that calls the OpenAI SDK directly; we don't use pydantic-ai" → `fastapi-service` (this skill is pydantic-ai only and does not convert the project)
 - "Mock the `BookModel` in the books tests" → `python-testing` (a database model, not an LLM; the answer there is the real container)
+- "Write API tests for `POST /v1/reviews`, no LLM involved" → `python-testing`
+- "The assistant endpoint should answer 422 for an empty or over-long `question`" → `fastapi-service` (request validation is schema work, not agent work)
 
 ### Eval 1 — New agent
 
@@ -719,8 +733,8 @@ Not applicable — `skill-writer` sets `disable-model-invocation: true` (and `al
 **Prompt**: "The new ai-agents SKILL.md is 420 lines. What should I do?"
 
 **Must produce**:
-- The largest cohesive block moved to `skills/ai-agents/reference/<topic>.md`, with a one-line "load when …" pointer from `SKILL.md`, back under the 300-line target
-- `reference/anthropic-best-practices.md` consulted for which limits are upstream (500 lines, 1,024-character description) and which are house rules
+- The largest cohesive block moved to `skills/ai-agents/references/<topic>.md`, with a one-line "load when …" pointer from `SKILL.md`, back under the 300-line target
+- `references/anthropic-best-practices.md` consulted for which limits are upstream (500 lines, 1,024-character description) and which are house rules
 
 **Must not produce**:
 - Content compressed in place to stay under the limit, or a second `SKILL.md` in a subfolder
@@ -788,10 +802,13 @@ Not applicable — `skill-writer` sets `disable-model-invocation: true` (and `al
 - "Create an app that serves a catalog of books" (no existing project)
 - "Spin up a tiny webhook receiver service, nothing fancy"
 - "Bootstrap a fresh repo for the analytics API"
+- "i have an empty folder, git init done. bootstrap a python service: fastapi, postgres, uv, ruff, tests, docker, ci"
+- "Start a new microservice from zero: a FastAPI app with one LLM chat endpoint, no database, tests and CI from the first commit"
 
 **Should not load**:
 - "Add `GET /v1/books/{book_id}` to my service" → `fastapi-service`
 - "Add CI to this existing project" → `python-tooling`
+- "Our existing repo has no CI yet — add a GitHub Actions workflow" → `python-tooling`
 - "Add the Postgres testcontainer fixture" → `postgres-database`
 - "Create an app that renames photos by their EXIF date" → no skill (a script or CLI, not an HTTP service)
 

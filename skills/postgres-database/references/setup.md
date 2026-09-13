@@ -53,7 +53,7 @@ def load_all_models() -> None:
         __import__(module.name)
 ```
 
-`migrations/env.py` calls this before reading `Base.metadata`; see `reference/testing.md`.
+`migrations/env.py` calls this before reading `Base.metadata`; see `references/testing.md`.
 
 ## Engine and session factory
 

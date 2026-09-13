@@ -253,5 +253,89 @@
     "expect": ["ai-agents"],
     "forbid": ["fastapi-service"],
     "prompt": "Our assistant endpoint answers 500 whenever the model provider rate-limits us. What status should it return instead, and where do I map that?"
+  },
+  {
+    "name": "trig-testing-conftest",
+    "tags": ["trigger", "python-testing", "near-miss"],
+    "arms": ["with"],
+    "expect": ["python-testing"],
+    "forbid": ["python-tooling"],
+    "prompt": "Our tests/conftest.py builds the FastAPI app fixture with function scope, so every test rebuilds the app and the suite takes minutes. Restructure the app and client fixtures so they are shared across the run without tests leaking state into each other."
+  },
+  {
+    "name": "trig-testing-flaky",
+    "tags": ["trigger", "python-testing"],
+    "arms": ["with"],
+    "expect": ["python-testing"],
+    "forbid": [],
+    "prompt": "tests/api/test_books.py::TestBooksList::test_success_filters_by_title fails maybe one run in ten with UniqueViolation on books_title_author_year_key and passes on rerun. How do I make it deterministic?"
+  },
+  {
+    "name": "trig-testing-vs-agents",
+    "tags": ["trigger", "python-testing", "near-miss"],
+    "arms": ["with"],
+    "expect": ["python-testing"],
+    "forbid": ["ai-agents"],
+    "prompt": "Write API tests for POST /v1/reviews in our FastAPI + Postgres service: a success case and a 404 when the book does not exist. No LLM involved anywhere."
+  },
+  {
+    "name": "trig-scaffold-casual",
+    "tags": ["trigger", "project-scaffolding", "near-miss"],
+    "arms": ["with"],
+    "cwd": "empty",
+    "max_turns": 12,
+    "expect": ["project-scaffolding"],
+    "forbid": ["python-tooling"],
+    "prompt": "i have an empty folder called invoice-api, git init already done. bootstrap a python service in it: fastapi, postgres, uv, ruff, tests, docker, ci - everything green so i can start adding endpoints. don't run anything yet, tell me the plan and the exact commands"
+  },
+  {
+    "name": "trig-scaffold-agent",
+    "tags": ["trigger", "project-scaffolding"],
+    "arms": ["with"],
+    "cwd": "empty",
+    "max_turns": 12,
+    "expect": ["project-scaffolding"],
+    "forbid": [],
+    "prompt": "Start a new microservice from zero: a FastAPI app exposing one chat endpoint backed by an LLM, no database. I want tests, linting and CI in place from the first commit. Do not run anything yet, describe what you would do and which commands you would run."
+  },
+  {
+    "name": "trig-nearmiss-scaffold-existing",
+    "tags": ["trigger", "python-tooling", "near-miss"],
+    "arms": ["with"],
+    "expect": ["python-tooling"],
+    "forbid": ["project-scaffolding"],
+    "prompt": "Our existing FastAPI repo has no CI yet. Add a GitHub Actions workflow that installs with uv and runs ruff, ty and pytest with the coverage gate on every pull request."
+  },
+  {
+    "name": "trig-style-review",
+    "tags": ["trigger", "python-code-style", "near-miss"],
+    "arms": ["with"],
+    "expect": ["python-code-style"],
+    "forbid": ["fastapi-service"],
+    "prompt": "Review app/domains/pricing/service.py against our Python style: PricingService builds its own httpx.AsyncClient in __init__, parse_response returns dict[str, Any], and there is a helpers.py next to it with three unrelated functions. What should change and why?"
+  },
+  {
+    "name": "trig-nearmiss-style-vs-tooling",
+    "tags": ["trigger", "python-tooling", "near-miss"],
+    "arms": ["with"],
+    "expect": ["python-tooling"],
+    "forbid": ["python-code-style"],
+    "prompt": "ruff keeps flagging UP007 and UP035 all over our codebase. Should we disable those rules in pyproject.toml or fix the code? If disabling, show the exact config change."
+  },
+  {
+    "name": "trig-nearmiss-style-vs-fastapi",
+    "tags": ["trigger", "fastapi-service", "near-miss"],
+    "arms": ["with"],
+    "expect": ["fastapi-service"],
+    "forbid": ["python-code-style"],
+    "prompt": "Add PATCH /v1/authors/{author_id} to our FastAPI service. Fields the client omits must keep their current values, and sending null for name must be rejected because the column is NOT NULL."
+  },
+  {
+    "name": "trig-nearmiss-agents-vs-fastapi",
+    "tags": ["trigger", "fastapi-service", "near-miss"],
+    "arms": ["with"],
+    "expect": ["fastapi-service"],
+    "forbid": ["ai-agents"],
+    "prompt": "Our POST /assistants/conversations endpoint accepts any string as question. It should answer 422 when question is empty or longer than 2000 characters. Where does that validation go and what does it look like?"
   }
 ]
