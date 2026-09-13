@@ -22,7 +22,7 @@ from pydantic_ai import models as pydantic_ai_models
 pydantic_ai_models.ALLOW_MODEL_REQUESTS = False
 ```
 
-The flag is read when a request is about to go out, not when a module is imported, so import order does not matter and a real provider model can be constructed freely in a test — it fails only if something runs it, with `RuntimeError: Model requests are not allowed, since ALLOW_MODEL_REQUESTS is False`. `TestModel` and `FunctionModel` are exempt. A test that deliberately drives a real client over a mocked transport re-enables it locally with `override_allow_model_requests(True)`.
+The flag is read when a request is about to go out, not when a module is imported, so import order does not matter and a real provider model can be constructed freely in a test — it fails only if something runs it, with `RuntimeError: Model requests are not allowed, since ALLOW_MODEL_REQUESTS is False`. `TestModel` and `FunctionModel` are exempt. A test that deliberately drives a real client over a mocked transport re-enables it locally with `override_allow_model_requests(True)` from `pydantic_ai.models`. Set the provider secret `Settings` requires in the same `pytest_configure` (`os.environ['OPENAI_API_KEY'] = 'test'`); otherwise `create_app()` fails validation wherever no `.env` exists, such as CI.
 
 ## The test-agent fixture
 
@@ -32,7 +32,6 @@ The agent reaches the app through a FastAPI dependency, so a test agent is one b
 from collections.abc import Awaitable, Callable, Generator
 
 from fastapi import FastAPI
-from httpx2 import AsyncClient
 from pydantic_ai import Agent
 from pydantic_ai.models import Model
 from pydantic_ai.models.test import TestModel
@@ -63,6 +62,8 @@ Because the fixture yields the agent object the app will use, a test can swap th
 The fixture replaces the agent dependency, so the dependency's own body — the registry lookup — never runs under it. Cover that once by overriding the registry instead, which is also what catches a second agent wired to the wrong registry. The two constants below are used by every test in this file:
 
 ```python
+from httpx2 import AsyncClient
+
 from app.core.enums import AssistantModelName
 from app.infrastructure.llms.registry import get_model_registry, ModelRegistry
 

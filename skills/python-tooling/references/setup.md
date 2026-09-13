@@ -11,13 +11,13 @@ Contents:
 
 ```bash
 uv python pin 3.13
-uv add --group dev ruff ty prek complexipy pytest pytest-asyncio pytest-cov
+uv add --group dev ruff ty prek complexipy pytest pytest-asyncio pytest-cov httpx2 polyfactory freezegun "testcontainers[postgres]"
 uv sync
 uv run prek install
 uv run prek run --all-files
 ```
 
-Commit `.python-version` and `uv.lock` alongside `pyproject.toml`. Runtime dependencies go in with `uv add <package>`; the tool sections below are copied into `pyproject.toml` as they are, with `paths` and `known-local-folder` adjusted if the top-level package is not `app`.
+Commit `.python-version` and `uv.lock` alongside `pyproject.toml`. The dev group is the test stack the sibling skills assume (`testcontainers[postgres]` only for a service with a database); runtime dependencies go in with `uv add <package>`; the tool sections below are copied into `pyproject.toml` as they are, with `paths` and `known-local-folder` adjusted if the top-level package is not `app`.
 
 ## pyproject.toml tool sections
 

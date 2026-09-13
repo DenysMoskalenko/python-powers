@@ -14,12 +14,13 @@ This skill owns how a FastAPI service is tested: what to drive through HTTP, the
 
 ## What to test, and with what
 
-Prefer API-level tests to isolated unit tests: one request through `AsyncClient` exercises routing, dependency injection, validation, the service, serialization and the exception handlers together, which is the combination that actually breaks. `tests/unit/` is for behaviour with no HTTP surface: a factory, a sorting helper, a model constraint. Mock only what you cannot run locally — LLM providers, third-party HTTP APIs, cloud services. Databases and brokers run for real; the house default is the Postgres testcontainer from `postgres-database`. Without a Docker daemon, ask for one — the fixtures start their own container and downgrade it to `base` at teardown — rather than falling back to SQLite or a mocked session.
+Prefer API-level tests to isolated unit tests: one request through `AsyncClient` exercises routing, dependency injection, validation, the service, serialization and the exception handlers together, which is the combination that actually breaks. `tests/unit/` is for behaviour with no HTTP surface: a factory, a sorting helper, a model constraint. Mock only what you cannot run locally — LLM providers, third-party HTTP APIs, cloud services. Databases and brokers run for real; the house default is the Postgres testcontainer from `postgres-database`. Without a Docker daemon, ask for one rather than falling back to SQLite or a mocked session; the fixtures start their own container and downgrade its schema to `base` at teardown.
 
 ## Layout and naming
 
 ```text
 tests/
+  __init__.py              # makes `from tests.dependencies import ...` resolve under pytest
   conftest.py              # app and client fixtures, pytest_configure
   dependencies.py          # override utilities and the missing-fixture sentinel
   factories.py             # one polyfactory factory per *Create schema
@@ -72,7 +73,7 @@ async def client(app: FastAPI) -> AsyncGenerator[AsyncClient]:
         yield client
 ```
 
-`app` is a plain synchronous `def` with no engine or container parameter; the autouse container fixture in `postgres-database` guarantees ordering. The `create_app` import stays inside the body so nothing in `app.main`'s import graph runs before `DATABASE_URL` is set. Both fixtures are session-scoped: anything one test needs to change goes in as a dependency override installed for that test and removed afterwards, never as a mutated attribute on the shared app.
+`app` is a plain synchronous `def` with no engine or container parameter; the autouse container fixture in `postgres-database` guarantees ordering. The `create_app` import stays inside the body so `app.main` and the routers are not imported at collection time, before `DATABASE_URL` is set. Both fixtures are session-scoped: anything one test needs to change goes in as a dependency override installed for that test and removed afterwards, never as a mutated attribute on the shared app.
 
 `ASGITransport` does not run the app's lifespan; a fixture that needs startup code wraps the client:
 

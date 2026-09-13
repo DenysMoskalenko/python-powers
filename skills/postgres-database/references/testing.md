@@ -94,7 +94,7 @@ def _alembic_downgrade(connection: Connection, alembic_config: Config) -> None:
     downgrade(alembic_config, 'base')
 ```
 
-`run_sync` hands Alembic the synchronous `Connection` behind the async one, and `attributes['connection']` is what makes Alembic use it instead of opening its own. Without that line the migrations run on a second, independent connection and commit outside this transaction, so the schema the fixture built is not the one this connection is inside, and any lock the outer transaction holds on a table a revision alters blocks the teardown `downgrade`.
+`run_sync` hands Alembic the synchronous `Connection` behind the async one, and `attributes['connection']` is what makes Alembic use it instead of opening its own. Without that line Alembic builds its own engine from the same URL and the migrations commit on a separate connection, outside the transaction this fixture controls.
 
 The teardown downgrade to `base` is worth keeping: it exercises the `downgrade()` half of every revision once per run, which is otherwise never tested.
 
@@ -210,7 +210,7 @@ The `_engine` fixture owns schema creation. Leaving startup migrations on means 
 
 ## Gotchas
 
-- Request the `session` fixture in every test that reaches the database, including pure HTTP tests that never touch the session directly. It is the fixture that installs the rollback-bound override; without it the request runs against a real committed transaction, or against the sentinel `python-testing` installs in its place.
+- Request the `session` fixture in every test that reaches the database, including pure HTTP tests that never touch the session directly. It is the fixture that installs the rollback-bound override; without it the request hits the sentinel `python-testing` installs (or, with no sentinel, a real committed transaction).
 - Do not downgrade to `base` before the first upgrade. A fresh container has no `alembic_version` table, so there is nothing to downgrade and the call is pure startup cost.
 - Let Alembic build the test schema. `Base.metadata.create_all()` produces a schema that no migration was ever run to reach, so a broken revision passes the suite and fails in deployment.
 - `_engine` downgrades to `base` on teardown, so it must keep its `_postgres_container` parameter and never see any other URL. Drop the parameter and a run against a `DATABASE_URL` that points at a real database wipes that schema at the end.

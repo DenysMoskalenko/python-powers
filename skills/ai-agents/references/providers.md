@@ -76,7 +76,7 @@ def get_bedrock_provider(
     return BedrockProvider(bedrock_client=bedrock_client)
 ```
 
-boto3 resolves credentials from the ambient chain; read them from `Settings` and pass them explicitly only where the deployment has no role to assume. Pin the SDK's own retry policy explicitly (`max_retries` on the OpenAI client above; boto3 retries in `standard` mode by default and takes `Config(retries={'max_attempts': ..., 'mode': 'standard'})` to change it): that loop is separate from the agent's `retries` budget, which never covers transport errors.
+boto3 resolves credentials from the ambient chain; read them from `Settings` only where the deployment has no role to assume. Pin the SDK's own retry policy explicitly: `max_retries` on the OpenAI client above, and `Config(retries={'max_attempts': ..., 'mode': 'standard'})` on the Bedrock client, whose default is `legacy` mode. That loop is separate from the agent's `retries` budget, which never covers transport errors.
 
 ## The registry
 
@@ -222,7 +222,7 @@ EXCEPTION_HANDLERS: ExceptionHandlers = {
 
 `EXCEPTION_HANDLERS`, its `ExceptionHandlers` alias and the two domain handlers shown first belong to `fastapi-service`, which declares the dictionary in this same module and hands it to `FastAPI(exception_handlers=...)`. When the literal is built elsewhere, assign into it (`EXCEPTION_HANDLERS[ModelHTTPError] = ...`) rather than rebinding the name, which drops the domain handlers already registered there.
 
-Register all four; with a Bedrock model in the registry, add a fifth entry mapping `botocore.exceptions.BotoCoreError` to the same 503 as `model_api_error_handler`. Starlette resolves a handler by walking the exception's MRO and taking the first match it finds in the mapping, so `ModelHTTPError` reaches its own handler and every other model failure falls through to `ModelAPIError`. A rate limit stays a rate limit; anything else the provider rejected is a 502 because the upstream call failed, not the client's request. The last two entries are not reachable through `ModelAPIError`: `FallbackExceptionGroup` is an `ExceptionGroup`, so a `FallbackModel` in the registry whose members all fail answers 500 without its own entry, and `UsageLimitExceeded` is raised by the agent's own limit check, never by a provider, so it does not subclass `ModelAPIError`.
+Register all four; with a Bedrock model in the registry, add `botocore.exceptions.BotoCoreError: model_api_error_handler` as a fifth entry. Starlette resolves a handler by walking the exception's MRO and taking the first match it finds in the mapping, so `ModelHTTPError` reaches its own handler and every other model failure falls through to `ModelAPIError`. A rate limit stays a rate limit; anything else the provider rejected is a 502 because the upstream call failed, not the client's request. The last two entries are not reachable through `ModelAPIError`: `FallbackExceptionGroup` is an `ExceptionGroup`, so a `FallbackModel` in the registry whose members all fail answers 500 without its own entry, and `UsageLimitExceeded` is raised by the agent's own limit check, never by a provider, so it does not subclass `ModelAPIError`.
 
 One parametrized test covers the whole mapping, driving the endpoint through a model that raises. `build_raising_model` and the `test_catalog_assistant_agent` fixture come from `references/testing.md`:
 
@@ -255,6 +255,6 @@ To prove the normalization itself rather than trust it, build a real `AsyncOpenA
 
 ## Gotchas
 
-- `pydantic-ai-slim` ships no provider SDKs. Install the extras you use, as in `pydantic-ai-slim[openai,bedrock]`, and record them in `pyproject.toml`.
+- `pydantic-ai-slim` ships no provider SDKs. Install the extras you use, as in `pydantic-ai-slim[openai,bedrock]`, plus `boto3-stubs[bedrock-runtime]` as a runtime dependency, because `provider_bedrock.py` imports `mypy_boto3_bedrock_runtime` at module level for the `Annotated` hint FastAPI evaluates.
 - The registry functions return `Model`, so `model.settings` is the base `ModelSettings` TypedDict and a test that indexes a provider key (`model.settings['openai_prompt_cache_key']`) fails the type check with `Unknown key`. Read it through `dict(model.settings or {})`, or narrow the return annotation to the concrete model class in the one place a test needs the provider key.
 - The OpenAI SDK depends on `httpx2`, not `httpx`. Test doubles import `AsyncClient`, `MockTransport`, `Request` and `Response` from `httpx2`, and importing them from `httpx` fails the type check because the package is not installed.

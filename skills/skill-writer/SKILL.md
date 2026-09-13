@@ -135,7 +135,7 @@ Services own their queries, so `fastapi-service` shows the service shape with on
 
 ```bash
 claude plugin validate .                                        # .claude-plugin/marketplace.json only
-wc -w -l skills/<name>/SKILL.md skills/<name>/references/*.md   # word and line budgets
+find skills/<name> -name '*.md' -exec wc -w -l {} +             # word and line budgets
 uv run --with pyyaml python -c "import sys, yaml; print(yaml.safe_load(sys.stdin.read().split('---')[1]))" < skills/<name>/SKILL.md
 ```
 
