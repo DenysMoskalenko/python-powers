@@ -22,7 +22,7 @@ Facts from the Agent Skills specification, Anthropic's skill best-practices page
 - Tone: explain why instead of heavy-handed "MUST"; capitalized ALWAYS/NEVER is a warning sign; escalate wording only after an eval shows the calm sentence being skipped.
 - Time-sensitive facts age badly; use capability language and keep versions in one place.
 - One term per concept throughout a skill.
-- Evals first: scenarios per skill (counts in `SKILL.md`, Creating a skill step 4), a baseline without the skill, evidence-graded, run on every model the team uses; descriptions tuned with should-load and near-miss should-not-load prompts, several runs each.
+- Evals first: descriptions tuned with should-load and near-miss should-not-load prompts (Creating a skill step 4), several runs each, on every model the team uses.
 - `claude plugin validate <dir>` validates only `.claude-plugin/marketplace.json`; a `SKILL.md` with unparsable frontmatter still loads, with an empty description, so parse frontmatter separately.
 
 ## Host behaviour worth knowing

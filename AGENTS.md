@@ -29,7 +29,7 @@ Before changing files:
 5. Do not invent CI, release steps, review rules, commands, or acceptance criteria that do
    not exist in this repository.
 6. If you change a skill, read `skills/skill-writer/SKILL.md` first and follow its
-   folder layout, frontmatter, body structure, ownership, and evaluation rules.
+   folder layout, frontmatter, body structure, ownership, and hand-off checks.
 
 ## What Belongs Here
 
@@ -85,10 +85,10 @@ For every change:
 
 - Re-read the complete changed section after editing.
 - Verify links and local paths you touched exist.
-- When touching a `SKILL.md` or a reference file, confirm the frontmatter parses (a
-  frontmatter that fails to parse still loads, with an empty description), every code fence
-  has a language tag, every path named in prose exists, and the file is within the
-  `skill-writer` budgets (`wc -w`).
+- When touching a `SKILL.md` or a reference file, run the checks in `skill-writer`
+  ("Checks before handing off"): the frontmatter parses (one that fails still loads, with
+  an empty description), every code fence has a language tag, every path named in prose
+  exists, and the file is within the word and line budgets.
 - Run `claude plugin validate .` when touching a manifest; it validates only
   `.claude-plugin/marketplace.json`.
 - Report exactly what you changed and what you verified.

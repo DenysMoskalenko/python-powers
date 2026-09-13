@@ -11,7 +11,7 @@ Generate a new service from a pinned revision of the BoilerplateBuilder cookiecu
 
 **Related**: the hand-off skills `fastapi-service`, `postgres-database`, `ai-agents`, `python-testing`, `python-tooling`; `python-code-style` governs everything written after the scaffold.
 
-Ask the user about their domain, never about template inputs — those all have baselines below. Before running the generator, tell them which BoilerplateBuilder revision you will pin and what its post-generation hook does on their machine: `uv lock && uv sync` over the network, `git init` plus an initial commit when `initialize_git=yes`, and `prek install`; with `Extract Here`, also list the files it overwrites (`README.md`, `.gitignore`). Run it once they say go. Afterwards, report the revision used and the result of the quality gate, so the origin of their code and its verified state are both on the record.
+Ask the user only about their domain (at most the one question below), never about template inputs. Before running the generator, tell them which BoilerplateBuilder revision you will pin and what its post-generation hook does on their machine: `uv lock && uv sync` over the network, `git init` plus an initial commit when `initialize_git=yes`, and `prek install`; with `Extract Here`, also list the files it overwrites (`README.md`, `.gitignore`). Run it once they say go. Afterwards, report the revision used and the result of the quality gate, so the origin of their code and its verified state are both on the record.
 
 ## Choose the project type
 
@@ -38,14 +38,14 @@ Always pass `project_name` and `project_type`. Derive the description and author
 | `project_type` | from the table above, always explicitly |
 | `project_description` | one line describing the service, taken from the conversation |
 | `author_name`, `author_email` | `git config user.name` and `user.email`; when unset, keep the template placeholder and tell the user to fix it |
-| `python_version` | baseline `3.13`, the floor these skills are written against; the template also accepts `3.12` (the examples' PEP 696 defaults such as `AsyncGenerator[T]` then need an explicit `, None`) and `3.11` (PEP 695 syntax no longer applies either) |
+| `python_version` | baseline `3.13`, the floor these skills are written against; the template also accepts `3.12` (PEP 695 syntax still applies) and `3.11` (it does not) |
 | `use_github_actions` | baseline `yes`; `no` when CI lives elsewhere |
 | `initialize_git` | baseline `yes`; `no` when the target directory already has `.git` |
 | `use_otel_observability` | baseline `no`; `yes` when the user asks for tracing or metrics |
 | `generate_local_otel_stack` | baseline `no`; `yes` only together with `use_otel_observability=yes`, otherwise the hook exits with an error |
 | `extract_to_current_dir` | baseline `Create New`, which makes a subdirectory named after the project; `Extract Here` when the user is already inside the directory the project should fill |
 
-Generate only into an empty target — a directory holding nothing but `.git`. A freshly cloned or `git init`-ed repository qualifies, with `initialize_git=no`; a directory that already holds `app/` or `pyproject.toml` is not a target.
+Generate only into an empty target — a directory holding nothing but `.git`. A freshly `git init`-ed or empty-cloned repository qualifies, with `initialize_git=no`; a directory that already holds `app/` or `pyproject.toml` is not a target.
 
 ## Generate the project
 
@@ -77,7 +77,7 @@ uv tool run cookiecutter https://github.com/DenysMoskalenko/BoilerplateBuilder \
 | Mistake | Do instead | Why |
 |---|---|---|
 | Running the generator inside an existing project to add a missing piece | Use the domain skill that owns that piece | The template writes a whole tree and overwrites same-named files |
-| Asking the user about cookiecutter, its prompts, or input names | Ask the one domain question and name the revision you are about to use | Users can answer product questions, not template mechanics |
+| Asking the user about cookiecutter, its prompts, or input names | Ask the one domain question only when the persist/agent axis is open, and name the revision you are about to use | Users can answer product questions, not template mechanics |
 | A `project_name` containing spaces | Letters, digits, `_`, and `-` only | The name becomes the distribution name, the database name, and the image tag; a space breaks `uv lock` inside the hook |
 
 ## Gotchas

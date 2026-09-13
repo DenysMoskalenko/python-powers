@@ -76,7 +76,7 @@ def get_bedrock_provider(
     return BedrockProvider(bedrock_client=bedrock_client)
 ```
 
-boto3 resolves credentials from the ambient chain; read them from `Settings` and pass them explicitly only where the deployment has no role to assume. Pin the SDK's own retry policy explicitly on both clients (`max_retries` on the OpenAI client, `Config(retries={'max_attempts': ..., 'mode': 'standard'})` on boto3): that loop is separate from the agent's `retries` budget, which never covers transport errors.
+boto3 resolves credentials from the ambient chain; read them from `Settings` and pass them explicitly only where the deployment has no role to assume. Pin the SDK's own retry policy explicitly (`max_retries` on the OpenAI client above; boto3 retries in `standard` mode by default and takes `Config(retries={'max_attempts': ..., 'mode': 'standard'})` to change it): that loop is separate from the agent's `retries` budget, which never covers transport errors.
 
 ## The registry
 
@@ -173,7 +173,7 @@ Pass them to the `Model` constructor as `settings=` — Bedrock's cache flags, t
 
 pydantic-ai normalizes provider API failures before they leave the model class: an HTTP status becomes `ModelHTTPError`, any other provider response becomes `ModelAPIError`. Application code never sees `openai.RateLimitError` or `botocore.exceptions.ClientError`, so a handler registered for one of those never fires. Bedrock transport failures are the exception: the model wraps only `ClientError`, so a `botocore.exceptions.BotoCoreError` (connection or read timeout) propagates unwrapped and needs its own handler when a Bedrock model is in the registry.
 
-Four handlers in `app/core/exception_handlers.py`, in the return form `fastapi-service` uses:
+Four handlers in `app/core/exception_handlers.py`, in the return form `fastapi-service` uses, added to the `EXCEPTION_HANDLERS` literal that module already declares:
 
 ```python
 from fastapi import HTTPException, Request, Response
@@ -211,6 +211,8 @@ async def usage_limit_exceeded_handler(request: Request, exc: UsageLimitExceeded
 
 
 EXCEPTION_HANDLERS: ExceptionHandlers = {
+    NotFoundError: not_found_exception_handler,
+    AlreadyExistError: conflict_exception_handler,
     ModelHTTPError: model_http_error_handler,
     ModelAPIError: model_api_error_handler,
     FallbackExceptionGroup: fallback_exception_group_handler,
@@ -218,9 +220,9 @@ EXCEPTION_HANDLERS: ExceptionHandlers = {
 }
 ```
 
-`EXCEPTION_HANDLERS` and its `ExceptionHandlers` alias belong to `fastapi-service`, which declares the dictionary in this same module and hands it to `FastAPI(exception_handlers=...)`. Add these entries to that literal; assign into it (`EXCEPTION_HANDLERS[ModelHTTPError] = ...`) when it is built elsewhere, and never rebind the name, which drops the domain handlers already registered there.
+`EXCEPTION_HANDLERS`, its `ExceptionHandlers` alias and the two domain handlers shown first belong to `fastapi-service`, which declares the dictionary in this same module and hands it to `FastAPI(exception_handlers=...)`. When the literal is built elsewhere, assign into it (`EXCEPTION_HANDLERS[ModelHTTPError] = ...`) rather than rebinding the name, which drops the domain handlers already registered there.
 
-Register all four (plus the `BotoCoreError` one for Bedrock). Starlette resolves a handler by walking the exception's MRO and taking the first match it finds in the mapping, so `ModelHTTPError` reaches its own handler and every other model failure falls through to `ModelAPIError`. A rate limit stays a rate limit; anything else the provider rejected is a 502 because the upstream call failed, not the client's request. The last two entries are not reachable through `ModelAPIError`: `FallbackExceptionGroup` is an `ExceptionGroup`, so a `FallbackModel` in the registry whose members all fail answers 500 without its own entry, and `UsageLimitExceeded` is an agent error raised before any provider is called.
+Register all four; with a Bedrock model in the registry, add a fifth entry mapping `botocore.exceptions.BotoCoreError` to the same 503 as `model_api_error_handler`. Starlette resolves a handler by walking the exception's MRO and taking the first match it finds in the mapping, so `ModelHTTPError` reaches its own handler and every other model failure falls through to `ModelAPIError`. A rate limit stays a rate limit; anything else the provider rejected is a 502 because the upstream call failed, not the client's request. The last two entries are not reachable through `ModelAPIError`: `FallbackExceptionGroup` is an `ExceptionGroup`, so a `FallbackModel` in the registry whose members all fail answers 500 without its own entry, and `UsageLimitExceeded` is raised by the agent's own limit check, never by a provider, so it does not subclass `ModelAPIError`.
 
 One parametrized test covers the whole mapping, driving the endpoint through a model that raises. `build_raising_model` and the `test_catalog_assistant_agent` fixture come from `references/testing.md`:
 

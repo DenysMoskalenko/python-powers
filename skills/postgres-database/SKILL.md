@@ -49,7 +49,7 @@ class AuthorModel(Base):
     )
 ```
 
-Timestamps are `DateTime(timezone=True)` with `server_default=func.now()`: a `timestamptz` the database clock fills; `updated_at` adds `onupdate=func.now()`, which fires for every update issued through SQLAlchemy (Core or ORM) but not for raw SQL from other clients.
+Timestamps are `DateTime(timezone=True)` with `server_default=func.now()`: a `timestamptz` the database clock fills; `updated_at` adds `onupdate=func.now()`, which fires for every update issued through SQLAlchemy (Core or ORM) but not for raw SQL (`text()` or another client).
 
 Sibling model modules refer to each other through an `if TYPE_CHECKING:` import plus a quoted annotation: the guarded import keeps ruff's `F821` quiet, and SQLAlchemy resolves `'BookModel'` from its declarative registry, so there is no runtime cycle.
 
@@ -105,7 +105,7 @@ A numeric column drawn from a fixed range gets the same treatment as a bounded `
 
 ### Cascades and deletes
 
-`passive_deletes=True` on the parent relationship and `ondelete='CASCADE'` on the child's foreign key are one decision: `passive_deletes=True` tells the ORM not to load and delete children itself because the database will, and the service deletes parents with a Core `delete()`, which bypasses ORM cascades anyway, so without the database rule that delete raises `IntegrityError: ... violates foreign key constraint`. If the database should not cascade, drop `passive_deletes=True` and delete children explicitly.
+`passive_deletes=True` on the parent relationship and `ondelete='CASCADE'` on the child's foreign key are one decision: `passive_deletes=True` tells the ORM not to load and delete children itself because the database will. The service deletes parents with a Core `delete()`, which bypasses ORM cascades anyway, so without the database rule that delete raises `IntegrityError: ... violates foreign key constraint`. If the database should not cascade, drop `passive_deletes=True` and delete children explicitly.
 
 ### Primary keys
 
@@ -264,7 +264,7 @@ Generate schema migrations with autogenerate:
 uv run alembic revision --autogenerate -m "add books"
 ```
 
-Autogenerate diffs the models against the database `DATABASE_URL` points at, so start the local stack (`docker compose up -d`) and bring it to head (`make migrate`) first; a stale schema produces a wrong diff. `migrate` and `downgrade` run only against the local compose database unless the user names another target.
+Autogenerate diffs the models against the database `DATABASE_URL` points at, so start the local stack (`docker compose up -d`) and bring it to head (`make migrate`) first; a stale schema produces a wrong diff. `python-tooling` states which database those targets may touch.
 
 Then read the generated revision. Autogenerate renders a column rename as a drop plus an add, which destroys data, and sees neither enum value changes nor a new `CheckConstraint` — both come back as an empty revision; hand-edit those and write data migrations by hand. `migrations/env.py` imports every model module before reading `Base.metadata`; a model that is never imported is invisible and its table comes back as a drop.
 

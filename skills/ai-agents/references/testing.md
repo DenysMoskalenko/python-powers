@@ -32,6 +32,7 @@ The agent reaches the app through a FastAPI dependency, so a test agent is one b
 from collections.abc import Awaitable, Callable, Generator
 
 from fastapi import FastAPI
+from httpx2 import AsyncClient
 from pydantic_ai import Agent
 from pydantic_ai.models import Model
 from pydantic_ai.models.test import TestModel
@@ -70,7 +71,9 @@ QUESTION = 'How many hardware items?'
 
 
 async def test_the_agent_dependency_reads_the_registry(app: FastAPI, client: AsyncClient) -> None:
-    registry: ModelRegistry = {AssistantModelName.DEFAULT: TestModel(call_tools=[], custom_output_args={'answer': 'ok'})}
+    registry: ModelRegistry = {
+        AssistantModelName.DEFAULT: TestModel(call_tools=[], custom_output_args={'answer': 'ok'}),
+    }
     with temporary_override(app, get_model_registry, lambda: registry):
         response = await client.post(CONVERSATIONS_URL, json={'model': 'default', 'question': QUESTION})
 

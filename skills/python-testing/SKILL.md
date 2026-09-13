@@ -10,11 +10,11 @@ This skill owns how a FastAPI service is tested: what to drive through HTTP, the
 > Requires Python 3.13+, pytest, pytest-asyncio, polyfactory, httpx2.
 > Examples use `app/` as the top-level package and `app/domains/<feature>/` for feature modules. Substitute your names if different.
 
-**Related**: `python-code-style` defines the naming used here (`<Entity>Model`, `_logger`, `*Error`); load it alongside. Also `python-tooling`, `fastapi-service`, `postgres-database` (container, engine and `session` fixtures), `ai-agents` (LLM mocking), `project-scaffolding`.
+**Related**: `python-code-style` (load it alongside), `python-tooling`, `fastapi-service`, `postgres-database` (container, engine and `session` fixtures), `ai-agents` (LLM mocking), `project-scaffolding`.
 
 ## What to test, and with what
 
-Prefer API-level tests to isolated unit tests: one request through `AsyncClient` exercises routing, dependency injection, validation, the service, serialization and the exception handlers together, which is the combination that actually breaks. `tests/unit/` is for behaviour with no HTTP surface: a factory, a sorting helper, a model constraint. Mock only what you cannot run locally — LLM providers, third-party HTTP APIs, cloud services. Databases and brokers run for real; the house default is the Postgres testcontainer from `postgres-database`, and without a Docker daemon, ask for a reachable PostgreSQL to point `DATABASE_URL` at rather than falling back to SQLite or a mocked session.
+Prefer API-level tests to isolated unit tests: one request through `AsyncClient` exercises routing, dependency injection, validation, the service, serialization and the exception handlers together, which is the combination that actually breaks. `tests/unit/` is for behaviour with no HTTP surface: a factory, a sorting helper, a model constraint. Mock only what you cannot run locally — LLM providers, third-party HTTP APIs, cloud services. Databases and brokers run for real; the house default is the Postgres testcontainer from `postgres-database`. Without a Docker daemon, ask for one — the fixtures start their own container and downgrade it to `base` at teardown — rather than falling back to SQLite or a mocked session.
 
 ## Layout and naming
 
@@ -170,7 +170,7 @@ async def test_success_reports_the_configured_version(app: FastAPI, client: Asyn
     assert response.json()['version'] == '9.9.9'
 ```
 
-`get_settings` is the `lru_cache`d provider from `fastapi-service`. Prefer this to setting an environment variable and clearing the cache: the swap is scoped to the block. It reaches only injected values — `Annotated[Settings, Depends(get_settings)]` — because a module-level `get_settings()` call has already run.
+`get_settings` is the `lru_cache`d provider from `fastapi-service`. Prefer this to setting an environment variable and clearing the cache: the swap is scoped to the block. It reaches only injected values — `Annotated[Settings, Depends(get_settings)]` — because a direct `get_settings()` call never consults `dependency_overrides`.
 
 ## Factories
 
@@ -228,7 +228,7 @@ async def create_test_book(session: AsyncSession, author_id: int, **overrides: U
 
 Set data up through the service and assert through the API; the helpers live at the top of the feature file, and a caller names only what the test is about: `await create_test_book(session, author.id, title='Tehanu')`. `BookService` is in `postgres-database`.
 
-`Unpack[...Overrides]` turns a misspelled override into a type error and keeps polyfactory's build switches out of the helper; a test that needs an invalid object calls the factory directly. No `flush()` is needed: `insert(...).returning(...)` executes at `session.scalar()`, so the row is visible to the request that follows.
+`Unpack[...Overrides]` turns a misspelled override into a type error and keeps polyfactory's build switches out of the helper; a test that needs an invalid object calls the factory directly. No `flush()` is needed: the service's `insert(...).returning(...)` executes at `session.scalar()` (`postgres-database` explains why).
 
 ## Assertions
 
@@ -265,7 +265,7 @@ class TestBooksCreate:
         assert response.json()['detail'] == f'Author(id={unreal_id}) not found'
 ```
 
-`model_dump(mode='json')` both sends the payload and builds the expected body, so dates, UUIDs and enums are compared as the API returns them. Copying the generated fields into the expected dict is only sound because the two lines above pin `id` and the timestamp format. Error cases assert the status code and the handler's `detail`. Explicitness beats brevity in tests, because a reader should follow a test without opening a helper: the DRY threshold here is about five repetitions of a multi-step check, not three.
+`model_dump(mode='json')` both sends the payload and builds the expected body, so dates, UUIDs and enums are compared as the API returns them. Copying the generated fields into the expected dict is only sound because the two lines above pin `id` and the format of `created_at`. Error cases assert the status code and the handler's `detail`. Explicitness beats brevity in tests, because a reader should follow a test without opening a helper: the DRY threshold here is about five repetitions of a multi-step check, not three.
 
 ## Flaky tests
 
@@ -289,7 +289,7 @@ The floor is 90% line coverage; `python-tooling` owns the command, the gate and 
 
 ## Gotchas
 
-- A session-scoped async fixture and a function-scoped test run on different event loops unless `asyncio_default_test_loop_scope` is `"session"`; the fixture-scope option alone does not fix it, and `python-tooling` sets both. psycopg tolerates the mismatch; a loop-bound driver such as asyncpg fails with `attached to a different loop`.
+- A session-scoped async fixture and a function-scoped test run on different event loops unless `asyncio_default_test_loop_scope` is `"session"`; `asyncio_default_fixture_loop_scope` alone does not fix it, and `python-tooling` sets both. psycopg tolerates the mismatch; a loop-bound driver such as asyncpg fails with `attached to a different loop`.
 - `__check_model__` only sees polyfactory field declarations (`Use`, `Ignore`, `Require`, `PostGenerated`, callables); a misspelled plain class attribute such as `titel = 'oops'` is accepted silently.
 - `ASGITransport` re-raises app exceptions instead of answering 500, which is how a missing `session` fixture surfaces as the sentinel `RuntimeError` inside `await client.get(...)`. To assert on a 500 body, pass `raise_app_exceptions=False`.
 - Timestamps come back as strings; `datetime.fromisoformat(actual['created_at']).tzinfo is not None` catches a column that silently reverted to naive.

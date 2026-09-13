@@ -17,7 +17,7 @@ The main artifact is the [`skills/`](skills/) directory. Each skill is a focused
 | [`postgres-database`](skills/postgres-database/SKILL.md) | PostgreSQL 18, SQLAlchemy 2.0 async models and loading strategy, service-owned queries, Alembic migrations, and testcontainers-backed database fixtures. |
 | [`ai-agents`](skills/ai-agents/SKILL.md) | pydantic-ai 2.x agents in FastAPI services: typed dependencies, tools, instructions, model registry with FallbackModel, provider error mapping, conversations and streaming, and tests. |
 | [`project-scaffolding`](skills/project-scaffolding/SKILL.md) | Generating a brand-new FastAPI service from a pinned BoilerplateBuilder revision with tests, linters, CI, and Docker working from the first commit. Greenfield HTTP services only — not CLIs, libraries, scripts, or features in an existing project. |
-| [`skill-writer`](skills/skill-writer/SKILL.md) | House rules for adding, editing, splitting, or reviewing skills in this repository, and for writing their eval cases. |
+| [`skill-writer`](skills/skill-writer/SKILL.md) | House rules for adding, editing, splitting, or reviewing skills in this repository. |
 
 Some skills include additional reference material linked from their main guide. Every code example comes from a project that passes its quality gate on current library releases; feature modules live in `app/domains/<feature>/`, the layout the scaffolding template generates.
 

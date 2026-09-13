@@ -23,7 +23,7 @@ second = await agent.run(
 
 `all_messages()` is the running transcript — the history the run was given plus what it added — so the same line still carries turn one when it is written for turn three. `new_messages()` holds only what this run added.
 
-Instructions are not part of the history. The agent sends its own on every turn, so an edit to the instruction text takes effect on the next turn of every conversation already in flight, including one resumed from storage.
+Earlier turns' instructions are stored with the history but ignored; the agent sends its current text on every turn, so an edit to the instruction text takes effect on the next turn of every conversation already in flight, including one resumed from storage.
 
 ## Persisting a conversation
 

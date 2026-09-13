@@ -33,7 +33,7 @@ app/
 
 SQLAlchemy models are the deliberate exception: they stay in `app/infrastructure/db/models/` so Alembic autogenerates from a single metadata and cross-entity relationships need no cross-domain imports.
 
-Start flat with those three files. Promote a concern to a subpackage once it splits into two or more files — `books/services/` holding `service_books.py` and `service_books_validator.py` — with an `__init__.py` facade re-exporting the public names through `__all__`, so outside callers import from the package root (`from app.domains.books.services import BookService`), never the deep path; siblings inside the package import each other directly (`from .service_books import BookService`) to avoid circular imports. Keep the descriptive filename prefix so a file is unambiguous in search results.
+Start flat with those three files. Promote a concern to a subpackage once it splits into two or more files — `books/services/` holding `service_books.py` and `service_books_validator.py` — with an `__init__.py` facade re-exporting the public names through `__all__`, so outside callers import from the package root (`from app.domains.books.services import BookService`). Siblings inside the package import each other directly (`from .service_books import BookService`) to avoid circular imports. Keep the descriptive filename prefix so a file is unambiguous in search results.
 
 In a project that already uses a different layout, add the endpoint where its siblings live and do not migrate the tree; propose the move separately.
 
@@ -96,7 +96,7 @@ async def delete_author(author_id: int, service: Annotated[BookService, Depends(
 
 ### Query-parameter models
 
-FastAPI expands a `Query()` parameter model into its fields only when it is the route's only query parameter of any kind. A second `Query()` model or a bare scalar such as `limit: int = 10` beside it stops the expansion, and every request answers 422 with `Field required` per unexpanded model. Query parameters arriving through a `Depends()` sub-dependency (`*ListSorting`, `fastapi_pagination.Params`) are the exception: parsing stays intact, and the only cost is that the `Query()` model shows in `/docs` as one opaque parameter beside them — which a paginated route always pays, through `page` and `size`.
+FastAPI expands a `Query()` parameter model into its fields only when it is the route's only direct query parameter. A second `Query()` model or a bare scalar such as `limit: int = 10` beside it stops the expansion, and every request answers 422 with `Field required` per unexpanded model. Query parameters arriving through a `Depends()` sub-dependency (`*ListSorting`, `fastapi_pagination.Params`) are the exception: parsing stays intact, and the only cost is that the `Query()` model shows in `/docs` as one opaque parameter beside them — which a paginated route always pays, through `page` and `size`.
 
 So give `Query()` to the one model that carries a `list[...]` field, as `list_books` does, and keep every other query-reading model on `Depends()`. `Depends()` on a model with a `list[...]` field moves that field into the JSON body, so `?ids=1&ids=2` answers 200 with `ids` set to `None`. When no field is a list, `Depends()` is the better spelling: both parse, but `Depends()` renders each filter as its own parameter in `/docs`. Two models that each need `Query()` merge into one filters model.
 
@@ -126,8 +126,12 @@ class BookService:
         self._session = session
 
     async def get_book_by_id(self, book_id: int) -> BookDetail:
-        query = select(BookModel).options(joinedload(BookModel.author), joinedload(BookModel.cover))
-        book = await self._session.scalar(query.filter(BookModel.id == book_id))
+        query = (
+            select(BookModel)
+            .options(joinedload(BookModel.author), joinedload(BookModel.cover))
+            .filter(BookModel.id == book_id)
+        )
+        book = await self._session.scalar(query)
         if book is None:
             raise NotFoundError(f'Book(id={book_id}) not found')
         return BookDetail.model_validate(book)
@@ -146,7 +150,7 @@ _logger.info(
 
 ## Schemas
 
-Schemas live in the feature's `schemas.py`; one private base holds the shared fields and the input and response models derive from it.
+Schemas live in the feature's `schemas.py`; one private base holds the shared fields and the create and response models derive from it.
 
 ```python
 from datetime import datetime
@@ -223,7 +227,7 @@ class BookListSorting(BaseListSorting):
     )
 ```
 
-- `BookPatch` is declared separately with every field optional rather than inherited from `BookCreate`: inheriting makes each field required again and turns PATCH into a full replacement.
+- `BookPatch` is declared separately with every field optional rather than inherited from `BookCreate`: inheriting keeps each field required and turns PATCH into a full replacement.
 - A patch field whose column is NOT NULL keeps the column's type and takes `default=None` (`title: str`): pydantic does not validate a default, so an omitted field stays unset for `model_dump(exclude_unset=True)` while a sent `null` is a 422 instead of an `IntegrityError`; `ty` flags the mismatch, hence the suppression. A nullable column's field is `T | None`.
 - A response model carries `ConfigDict(from_attributes=True)` and is what the service returns; an ORM object never leaves the service.
 - Constrain string inputs with `min_length` and `max_length` and give input fields `examples` so `/docs` is usable; server-owned response fields need neither. `sort_by` is a `Literal`, so an unknown column is a 422 at the boundary.

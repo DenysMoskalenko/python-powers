@@ -94,7 +94,7 @@ def _alembic_downgrade(connection: Connection, alembic_config: Config) -> None:
     downgrade(alembic_config, 'base')
 ```
 
-`run_sync` hands Alembic the synchronous `Connection` behind the async one, and `attributes['connection']` is what makes Alembic use it instead of opening its own. Without that line the migrations run on a second, independent connection and commit outside this transaction, so the schema the fixture built is not the one this connection is inside; and as soon as the outer transaction has touched a table a revision alters — an `ACCESS SHARE` on `books` is enough — the teardown `downgrade` deadlocks against it.
+`run_sync` hands Alembic the synchronous `Connection` behind the async one, and `attributes['connection']` is what makes Alembic use it instead of opening its own. Without that line the migrations run on a second, independent connection and commit outside this transaction, so the schema the fixture built is not the one this connection is inside, and any lock the outer transaction holds on a table a revision alters blocks the teardown `downgrade`.
 
 The teardown downgrade to `base` is worth keeping: it exercises the `downgrade()` half of every revision once per run, which is otherwise never tested.
 
@@ -122,6 +122,18 @@ def get_url() -> str:
     return cast(str, os.getenv('DATABASE_URL', config.get_main_option('sqlalchemy.url')))
 
 
+def run_migrations_offline() -> None:
+    context.configure(
+        url=get_url(),
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={'paramstyle': 'named'},
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
 def do_run_migrations(connection: Connection) -> None:
     context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
 
@@ -141,9 +153,15 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as own_connection:
         do_run_migrations(own_connection)
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
 ```
 
-`load_all_models()` walks `app/infrastructure/db/models/` and imports every module, so `Base.metadata` is complete before autogenerate compares it against the database. Reading `DATABASE_URL` from the environment first is what lets the same `env.py` serve the CLI, the container and deployment.
+`load_all_models()` walks `app/infrastructure/db/models/` and imports every module, so `Base.metadata` is complete before autogenerate compares it against the database. Reading `DATABASE_URL` from the environment first is what lets the same `env.py` serve the CLI, the container and deployment. The module-level dispatch at the end is what Alembic executes; without it every `upgrade` returns without running anything.
 
 ## Rollback session
 

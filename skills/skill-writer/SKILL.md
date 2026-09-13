@@ -18,7 +18,7 @@ Skills are loaded by current frontier coding agents in Claude Code, Codex and Cu
 
 - They follow instructions literally and do not generalize scope on their own. Say "every `relationship()` in `app/infrastructure/db/models/`", not "relationships".
 - They over-comply with emphatic language. Where you would write "CRITICAL: you MUST", write "Use X when Y".
-- They reconcile contradictions at a cost. One owner per rule; two skills never state the same rule differently.
+- They reconcile contradictions at a cost, so one owner per rule.
 - They already know the libraries. A paragraph earns its tokens only if the agent would get it wrong without it: a house decision, a fragile sequence, a gotcha.
 - Reasons generalize better than bans. Put the why in the same sentence as the rule when it is not obvious.
 
@@ -134,11 +134,12 @@ Services own their queries, so `fastapi-service` shows the service shape with on
 ### Checks before handing off
 
 ```bash
-claude plugin validate .            # .claude-plugin/marketplace.json only
-wc -w skills/<name>/SKILL.md        # the word budget; wc -l for the line budget
+claude plugin validate .                                        # .claude-plugin/marketplace.json only
+wc -w -l skills/<name>/SKILL.md skills/<name>/references/*.md   # word and line budgets
+uv run --with pyyaml python -c "import sys, yaml; print(yaml.safe_load(sys.stdin.read().split('---')[1]))" < skills/<name>/SKILL.md
 ```
 
-Then confirm by reading: the frontmatter parses as YAML and carries only allowed keys, every fence has a language tag, every path named in prose exists, every `references/*.md` is linked from `SKILL.md`, and `agents/openai.yaml` is present.
+The third command prints the parsed frontmatter, or the YAML error. Then confirm by reading: only allowed keys, every fence with a language tag, every path named in prose exists, every `references/*.md` linked from `SKILL.md`, `agents/openai.yaml` present.
 
 ## Common mistakes
 
@@ -151,7 +152,7 @@ Then confirm by reading: the frontmatter parses as YAML and carries only allowed
 
 ## Gotchas
 
-- Frontmatter that fails to parse still loads in Claude Code with an empty description, so the skill silently stops routing; `claude plugin validate .` does not catch it, so parse it yourself.
+- Frontmatter that fails to parse still loads in Claude Code with an empty description, so the skill silently stops routing; `claude plugin validate .` does not catch it, hence the parse command above.
 - A colon plus space inside an unquoted description (`ty: ignore`) is a YAML mapping and breaks the frontmatter; drop the colon or quote the value.
 - Adding a skill means auditing every sibling's `**Related**` line and `README.md`; nothing else finds it.
 - Changing `python-code-style` changes what every domain skill may omit; review the siblings after.

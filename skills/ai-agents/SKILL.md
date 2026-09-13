@@ -10,7 +10,7 @@ Patterns for pydantic-ai agents that run inside a FastAPI request. An agent is o
 > Requires Python 3.13+, pydantic-ai 2.x (pydantic-ai-slim with the provider extras you use), FastAPI.
 > Examples use `app/` as the top-level package and `app/domains/<feature>/` for feature modules. Substitute your names if different.
 
-**Related**: `python-code-style` defines the naming used here (`<Entity>Model`, `_logger`, `*Error`); load it alongside. Also `fastapi-service`, `python-testing`, `project-scaffolding`.
+**Related**: `python-code-style` (load it alongside), `fastapi-service`, `python-testing`, `project-scaffolding`.
 
 ## Domain layout
 
@@ -104,7 +104,7 @@ def build_catalog_assistant_agent(model: Model) -> Agent[CatalogAssistantDeps, C
 
 `retries` stays at the library default. It budgets tool-argument and output validation retries — the `ModelRetry` loop that lets the model correct a malformed tool call — never provider or transport errors, which surface on the first attempt whatever the budget says; `retries=0` therefore turns one malformed tool call, a routine event, into a 500.
 
-Agent-level `ModelSettings` carries `max_tokens` from the response contract and `thinking` as the unified effort level when the workload wants reasoning. Leave `temperature` and other sampling settings out: providers disagree on them — OpenAI and Anthropic drop them with a warning once reasoning is on, Anthropic's newest models drop them regardless, Bedrock forwards them and lets the provider reject the call. Set sampling on the `Model` in the registry once the target model is known.
+Agent-level `ModelSettings` carries `max_tokens` from the response contract and `thinking` as the unified effort level when the workload wants reasoning. Leave `temperature` and other sampling settings out: providers disagree on them — OpenAI and Anthropic drop them with a warning once reasoning is on, some Anthropic models drop them regardless, Bedrock forwards them and lets the provider reject the call. Set sampling on the `Model` in the registry once the target model is known.
 
 ## Instructions
 
@@ -228,7 +228,7 @@ async def create_response(
 
 Declaring `payload` in both the route and the dependency does not add a second body field; FastAPI dedupes the read. Keep the dependency `async def` so a dict lookup is not dispatched to a threadpool.
 
-Rebuilding the agent per request buys per-request model selection and keeps the agent reachable through `agent.override()` in tests. The alternative — one module-level agent with the model chosen per call, `agent.run(question, model=registry[payload.model], deps=...)` — fits a model fixed per deployment. The service takes the agent as a method argument rather than a constructor collaborator because it is chosen from `payload.model`, and the service's constructor is resolved before the body is read.
+Rebuilding the agent per request buys per-request model selection and keeps the agent reachable through `agent.override()` in tests. The alternative — one module-level agent, with `agent.run(question, model=..., deps=...)` when a call needs another model — fits a model fixed per deployment. The service takes the agent as a method argument rather than a constructor collaborator because it is chosen per request from `payload.model`.
 
 ## Running the agent
 
@@ -283,7 +283,7 @@ class CatalogAssistantService:
 | `isinstance(model, BedrockConverseModel)` in the builder to add provider flags | Pass `settings=` to the `Model` in the registry | The builder stays provider-agnostic; model-level settings merge under the agent's |
 | Provider model ids as `Literal[...]` in `Settings` | Plain `str` fields | A new model id becomes an environment change instead of a code change |
 | Importing a service inside a tool | Take it from `ctx.deps` | A module-level import cannot be substituted in a test |
-| Handling `openai.RateLimitError` or `botocore.ClientError` in the app | Handle `ModelHTTPError` and `ModelAPIError` | pydantic-ai normalizes provider API errors, so the SDK ones never arrive; Bedrock transport failures (`BotoCoreError`) still need a catch-all |
+| Handling `openai.RateLimitError` or `botocore.exceptions.ClientError` in the app | Handle `ModelHTTPError` and `ModelAPIError` | pydantic-ai normalizes provider API errors, so the SDK ones never arrive; Bedrock transport failures still need their own `botocore.exceptions.BotoCoreError` handler |
 
 ## Gotchas
 
