@@ -54,15 +54,13 @@ Do not add:
 
 When editing `skills/<name>/SKILL.md`:
 
-- Use the `skill-writer` rules for frontmatter, structure, examples, and line budget.
+- Use the `skill-writer` rules for frontmatter, structure, examples, and budgets.
 - Keep ownership clean. Do not restate Python style rules inside framework skills, do not
   put FastAPI route rules in the database skill, and do not put pydantic-ai provider
   rules in generic testing docs.
 - Prefer one excellent example over several mediocre examples.
 - Preserve comments and deliberately worded warnings unless the change makes them
   irrelevant.
-- Update `evals/cases.json` (and the human-readable spec in `evals/scenarios.md`) when a
-  behavior change changes what a good agent response should do.
 
 When adding a new skill:
 
@@ -71,9 +69,8 @@ When adding a new skill:
 - Add a folder at `skills/<kebab-name>/SKILL.md`; use `references/` only for supporting
   material that would otherwise make the main file too long.
 - Update related-skill cross-references where they materially help discovery.
-- Add its scenarios to `evals/scenarios.md` and trigger and behavior cases to `evals/cases.json`.
 - Add `skills/<name>/agents/openai.yaml` with `interface.display_name` and
-  `interface.short_description`; Codex reads it and `evals/check_skills.py` requires it.
+  `interface.short_description`; Codex reads it.
 - Inspect the plugin manifests (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`,
   `.codex-plugin/plugin.json`, `.cursor-plugin/plugin.json`, `.agents/plugins/marketplace.json`)
   and update their discoverability metadata when the skill changes the plugin's advertised
@@ -88,14 +85,12 @@ For every change:
 
 - Re-read the complete changed section after editing.
 - Verify links and local paths you touched exist.
-- Run `uv run evals/check_skills.py` when touching a `SKILL.md`, a reference file, or a
-  manifest. It parses every frontmatter (one that fails to parse still loads, with an empty
-  description), and checks line and word budgets, links, code fences, `agents/openai.yaml`, and the
-  manifests.
+- When touching a `SKILL.md` or a reference file, confirm the frontmatter parses (a
+  frontmatter that fails to parse still loads, with an empty description), every code fence
+  has a language tag, every path named in prose exists, and the file is within the
+  `skill-writer` budgets (`wc -w`).
 - Run `claude plugin validate .` when touching a manifest; it validates only
   `.claude-plugin/marketplace.json`.
-- Run the eval cases for the touched skill when the owner asks for it (it spends API calls;
-  see `evals/README.md`); otherwise list the case names to run.
 - Report exactly what you changed and what you verified.
 
 For Python examples inside skills:

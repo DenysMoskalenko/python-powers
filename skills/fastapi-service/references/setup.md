@@ -92,7 +92,7 @@ from starlette import status
 
 from app.core.exceptions import AlreadyExistError, NotFoundError
 
-ExceptionHandlers = dict[int | type[Exception], Callable[[Request, Any], Coroutine[Any, Any, Response]]]
+type ExceptionHandlers = dict[int | type[Exception], Callable[[Request, Any], Coroutine[Any, Any, Response]]]
 
 
 async def not_found_exception_handler(request: Request, exc: NotFoundError) -> Response:

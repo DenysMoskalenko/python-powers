@@ -132,7 +132,7 @@ filterwarnings = [
 ]
 ```
 
-After a dependency upgrade, delete entries that no longer match anything (`uv run pytest -W always` with the block removed shows what still needs it); a dead entry hides that upstream fixed the problem. The entry above was deleted that way.
+After a dependency upgrade, delete entries that no longer match anything (`uv run pytest -W always` with the block removed shows what still needs it); a dead entry hides that upstream fixed the problem. The entry above is such a case: the deprecation it names disappeared in a later testcontainers release, and the entry went with it.
 
 Warnings that predate your change and have nothing to do with it are not yours to clean up in passing: report them and leave them unless the task says otherwise.
 
@@ -147,11 +147,11 @@ Warnings that predate your change and have nothing to do with it are not yours t
 ## Gotchas
 
 - `--cov-fail-under=90` passes below 90% unless `[tool.coverage.report] precision = 2` is set: pytest-cov compares `round(total, precision)` against the threshold and precision defaults to 0, so 89.6% prints `FAIL Required test coverage of 90% not reached` and still exits 0.
-- Coverage of an async SQLAlchemy service needs `[tool.coverage.run] concurrency = ["thread", "greenlet"]`: SQLAlchemy runs the driver in a greenlet and coverage.py stops tracing at the switch, so the line after every `await session.scalar(...)` is reported as missed even when covered.
-- `unused-ignore-comment` and `unused-type-ignore-comment` are two different ty rules, for stale `# ty: ignore[...]` and stale `# type: ignore[...]` respectively. Substituting one for the other produces no warning and no effect.
+- Coverage of an async SQLAlchemy service needs `[tool.coverage.run] concurrency = ["thread", "greenlet"]`: SQLAlchemy runs the driver in a greenlet and coverage.py stops tracing at the switch, so the line after every `await session.scalar(...)` — usually the `if row is None:` guard — is reported as missed even when covered.
+- `unused-ignore-comment` and `unused-type-ignore-comment` are two different ty rules, for stale `# ty: ignore[...]` and stale `# type: ignore[...]` respectively. Substituting one for the other produces no `unknown-rule` warning and no effect.
 - ty is pre-1.0: an upgrade can add diagnostics to clean code, so move it with `uv lock --upgrade-package ty` on its own and read the new findings before suppressing them.
 - The hook runner needs a git index. Outside a repository it fails with `fatal: not a git repository`; inside one with nothing staged every hook reports `(no files to check) Skipped` and exits 0, which looks identical to success.
 - A hook that rewrites files fails the commit with `- files were modified by this hook`. Stage the rewritten files and commit again; do not re-run with `--no-verify`.
 - `uv add` and `uv remove` re-lock and re-sync in one step; `uv sync` is for a checkout someone else's lock file arrived in.
 - ruff derives the target Python version from `requires-python`, so the baseline sets no `target-version`; a second copy of the floor drifts from the first.
-- pytest-asyncio no longer warns about an unset loop-scope default, so a project that dropped both options looks clean until a loop-bound driver is introduced.
+- pytest-asyncio's warning about an unset loop-scope default is raised during `pytest_configure` and never reaches the summary (only `-W always` shows it), so a project that dropped both options looks clean until a loop-bound driver is introduced.

@@ -17,6 +17,8 @@ How to test the agent patterns in `SKILL.md` without reaching a provider: blocki
 Turn the global switch off so a test that accidentally holds a real provider model fails loudly instead of spending money. This is the line this skill contributes to the `pytest_configure` skeleton `python-testing` owns:
 
 ```python
+from pydantic_ai import models as pydantic_ai_models
+
 pydantic_ai_models.ALLOW_MODEL_REQUESTS = False
 ```
 
@@ -68,7 +70,7 @@ QUESTION = 'How many hardware items?'
 
 
 async def test_the_agent_dependency_reads_the_registry(app: FastAPI, client: AsyncClient) -> None:
-    registry: ModelRegistry = {AssistantModelName.DEFAULT: TestModel(custom_output_args={'answer': 'ok'})}
+    registry: ModelRegistry = {AssistantModelName.DEFAULT: TestModel(call_tools=[], custom_output_args={'answer': 'ok'})}
     with temporary_override(app, get_model_registry, lambda: registry):
         response = await client.post(CONVERSATIONS_URL, json={'model': 'default', 'question': QUESTION})
 

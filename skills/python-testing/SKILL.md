@@ -14,7 +14,7 @@ This skill owns how a FastAPI service is tested: what to drive through HTTP, the
 
 ## What to test, and with what
 
-Prefer API-level tests to isolated unit tests: one request through `AsyncClient` exercises routing, dependency injection, validation, the service, serialization and the exception handlers together, which is the combination that actually breaks. `tests/unit/` is for behaviour with no HTTP surface: a factory, a sorting helper, a model constraint. Mock only what you cannot run locally — LLM providers, third-party HTTP APIs, cloud services. Databases run for real in the Postgres testcontainer from `postgres-database`; without a Docker daemon, ask for a reachable PostgreSQL to point `DATABASE_URL` at rather than falling back to SQLite or a mocked session.
+Prefer API-level tests to isolated unit tests: one request through `AsyncClient` exercises routing, dependency injection, validation, the service, serialization and the exception handlers together, which is the combination that actually breaks. `tests/unit/` is for behaviour with no HTTP surface: a factory, a sorting helper, a model constraint. Mock only what you cannot run locally — LLM providers, third-party HTTP APIs, cloud services. Databases and brokers run for real; the house default is the Postgres testcontainer from `postgres-database`, and without a Docker daemon, ask for a reachable PostgreSQL to point `DATABASE_URL` at rather than falling back to SQLite or a mocked session.
 
 ## Layout and naming
 
@@ -43,7 +43,7 @@ def pytest_configure(config: pytest.Config) -> None:
     os.environ['MIGRATION_ON_STARTUP'] = 'False'
 ```
 
-Take only the lines the skills the service uses contribute: `MIGRATION_ON_STARTUP` from `postgres-database`, `ALLOW_MODEL_REQUESTS = False` from `ai-agents`.
+Take only the lines the skills the service uses contribute: `MIGRATION_ON_STARTUP` from `postgres-database`, `pydantic_ai_models.ALLOW_MODEL_REQUESTS = False` from `ai-agents`.
 
 ## App and client fixtures
 
@@ -153,7 +153,9 @@ def override_app_test_dependencies(app: FastAPI) -> None:
     override_dependency(app, get_session, session_fixture_not_requested)
 ```
 
-A mounted `FastAPI` sub-application keeps its own `dependency_overrides`, which is why the helpers walk the mounts. `temporary_override` restores whatever was installed before the block — the sentinel, or an outer override — instead of clearing the entry. Any other dependency a test must not reach by accident joins `get_session` in `override_app_test_dependencies`; a service without a database leaves that function empty so the agent fixtures keep their hook. The sentinel raises rather than returning a placeholder: a placeholder fails much later with an obscure `AttributeError`, or passes silently if the endpoint never touched the database.
+A mounted `FastAPI` sub-application keeps its own `dependency_overrides`, which is why the helpers walk the mounts. `temporary_override` restores whatever was installed before the block — the sentinel, or an outer override — instead of clearing the entry. Any other dependency a test must not reach by accident joins `get_session` in `override_app_test_dependencies`; a service without a database keeps the function, empty, so the `app` fixture is unchanged.
+
+The sentinel raises rather than returning a placeholder: a placeholder fails much later with an obscure `AttributeError`, or passes silently if the endpoint never touched the database.
 
 ### Overriding get_settings for one test
 
@@ -224,7 +226,9 @@ async def create_test_book(session: AsyncSession, author_id: int, **overrides: U
     return await BookService(session).create_book(payload)
 ```
 
-Set data up through the service and assert through the API; the helpers live at the top of the feature file, and a caller names only what the test is about: `await create_test_book(session, author.id, title='Tehanu')`. `Unpack[...Overrides]` turns a misspelled override into a type error and keeps polyfactory's build switches out of the helper; a test that needs an invalid object calls the factory directly. No `flush()` is needed: `insert(...).returning(...)` executes at `session.scalar()`, so the row is visible to the request that follows. `BookService` is in `postgres-database`.
+Set data up through the service and assert through the API; the helpers live at the top of the feature file, and a caller names only what the test is about: `await create_test_book(session, author.id, title='Tehanu')`. `BookService` is in `postgres-database`.
+
+`Unpack[...Overrides]` turns a misspelled override into a type error and keeps polyfactory's build switches out of the helper; a test that needs an invalid object calls the factory directly. No `flush()` is needed: `insert(...).returning(...)` executes at `session.scalar()`, so the row is visible to the request that follows.
 
 ## Assertions
 
@@ -261,11 +265,11 @@ class TestBooksCreate:
         assert response.json()['detail'] == f'Author(id={unreal_id}) not found'
 ```
 
-`model_dump(mode='json')` both sends the payload and builds the expected body, so dates, UUIDs and enums are compared as the API returns them. Copying the generated fields into the expected dict is only sound because the two lines above pin `id` and the timestamp format. Error cases assert the status code and the handler's `detail`. Explicitness beats brevity in tests: the DRY threshold here is about five repetitions of a multi-step check, not three.
+`model_dump(mode='json')` both sends the payload and builds the expected body, so dates, UUIDs and enums are compared as the API returns them. Copying the generated fields into the expected dict is only sound because the two lines above pin `id` and the timestamp format. Error cases assert the status code and the handler's `detail`. Explicitness beats brevity in tests, because a reader should follow a test without opening a helper: the DRY threshold here is about five repetitions of a multi-step check, not three.
 
 ## Flaky tests
 
-- **An override that was not restored.** Install every swap with `temporary_override`; a bare `override_dependency` in a fixture outlives its test.
+- **An override that was not restored.** Install every swap with `temporary_override`; a bare `override_dependency` in a fixture outlives its test, and the next test reuses a closed session or a stale agent.
 - **Unseeded random data** colliding with a unique constraint or a validator. Reproduce with `BookCreateFactory.seed_random(0)`, then narrow the offending field with `Use(...)`; the seed is the diagnostic, not the fix.
 - **A real clock.** Freeze it with freezegun's `freeze_time(...)` for values the application computes; `created_at` and `updated_at` come from the database clock, which freezegun does not reach, so assert their tz-awareness or ordering.
 - **Order dependence.** Run the file alone, then the suite with the order changed; `pytest-randomly` does that on every run (adding packages goes through `python-tooling`).
@@ -285,7 +289,7 @@ The floor is 90% line coverage; `python-tooling` owns the command, the gate and 
 
 ## Gotchas
 
-- A session-scoped async fixture and a function-scoped test run on different event loops unless `asyncio_default_test_loop_scope` is `"session"`; `python-tooling` sets it. psycopg tolerates the mismatch; a loop-bound driver such as asyncpg fails with `attached to a different loop`.
+- A session-scoped async fixture and a function-scoped test run on different event loops unless `asyncio_default_test_loop_scope` is `"session"`; the fixture-scope option alone does not fix it, and `python-tooling` sets both. psycopg tolerates the mismatch; a loop-bound driver such as asyncpg fails with `attached to a different loop`.
 - `__check_model__` only sees polyfactory field declarations (`Use`, `Ignore`, `Require`, `PostGenerated`, callables); a misspelled plain class attribute such as `titel = 'oops'` is accepted silently.
 - `ASGITransport` re-raises app exceptions instead of answering 500, which is how a missing `session` fixture surfaces as the sentinel `RuntimeError` inside `await client.get(...)`. To assert on a 500 body, pass `raise_app_exceptions=False`.
 - Timestamps come back as strings; `datetime.fromisoformat(actual['created_at']).tzinfo is not None` catches a column that silently reverted to naive.

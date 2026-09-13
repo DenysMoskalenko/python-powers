@@ -16,5 +16,5 @@ __pycache__/
 tmp/
 /.cursor/
 
-# Eval runner output (never committed)
-evals/results/
+# Eval harness and its output (kept local, never committed)
+evals/

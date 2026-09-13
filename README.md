@@ -38,12 +38,9 @@ Typical combinations:
 | Add or refactor Python application code | `python-code-style` |
 | Build a FastAPI endpoint backed by PostgreSQL | `python-code-style`, `fastapi-service`, `postgres-database`, `python-testing` |
 | Add an AI assistant endpoint to a service | `python-code-style`, `fastapi-service`, `ai-agents`, `python-testing` |
+| Write or update tests for an existing feature | `python-code-style`, `python-testing`, plus the feature's domain skill |
 | Change linting, typing, dependencies, or test commands | `python-tooling` |
 | Edit one of this repository's skills | `skill-writer` plus the skill being changed |
-
-## Evals
-
-`evals/` holds runnable trigger and behaviour cases plus a headless runner (`python3 evals/run_evals.py`) that loads the plugin into a fresh scratch project, checks which skill fired, and grades the code the agent wrote with and without the skill. See [`evals/README.md`](evals/README.md). The human-readable specification behind the cases is [`evals/scenarios.md`](evals/scenarios.md); `uv run evals/check_skills.py` is the static check (frontmatter, line and word budgets, links, code fences, manifests) and spends no API calls.
 
 ## Install As A Claude Code Plugin
 
@@ -132,7 +129,7 @@ Changes should improve shared, reusable Python engineering guidance. Good contri
 
 Avoid adding app-specific conventions, one-off team workflows, unproven tool recommendations, or claims about CI and release processes that are not represented in this repository.
 
-When changing a skill, read [`skills/skill-writer/SKILL.md`](skills/skill-writer/SKILL.md) first and keep the edit scoped to that skill's ownership. Before opening a pull request run `uv run evals/check_skills.py`, `claude plugin validate .` (which checks only the marketplace manifest), and the eval cases for the touched skill (they spend API calls; see [`evals/README.md`](evals/README.md)).
+When changing a skill, read [`skills/skill-writer/SKILL.md`](skills/skill-writer/SKILL.md) first and keep the edit scoped to that skill's ownership. Before opening a pull request, check the skill against the `skill-writer` budgets and run `claude plugin validate .` (which checks only the marketplace manifest).
 
 ## License
 

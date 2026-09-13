@@ -124,14 +124,11 @@ from pydantic import PostgresDsn
 def get_alembic_config(database_url: PostgresDsn, script_location: str = 'migrations') -> Config:
     alembic_config = Config()
     alembic_config.set_main_option('script_location', script_location)
-    alembic_config.set_main_option(
-        'sqlalchemy.url',
-        database_url.unicode_string().replace('postgresql+psycopg', 'postgresql'),
-    )
+    alembic_config.set_main_option('sqlalchemy.url', database_url.unicode_string())
     return alembic_config
 ```
 
-Building the `Config` in code rather than reading `alembic.ini` lets tests and startup migrations pass a database URL that only exists at runtime. The `+psycopg` driver marker is stripped because `migrations/env.py` builds a synchronous engine from this URL; the async driver belongs to the application engine, not to Alembic.
+Building the `Config` in code rather than reading `alembic.ini` lets tests and startup migrations pass a database URL that only exists at runtime. The URL keeps its `+psycopg` marker: psycopg 3 serves both the async application engine and the synchronous one `migrations/env.py` builds, while a bare `postgresql://` URL selects psycopg2, which is not installed. Do not strip the marker, as some templates do — it fails with `ModuleNotFoundError: No module named 'psycopg2'` the first time `env.py` falls back to this URL because `DATABASE_URL` is not exported in the environment.
 
 `script_location` resolves relative to the current working directory. Pass an absolute path when the caller may not be the repository root — a test run started from an IDE, for instance.
 

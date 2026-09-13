@@ -102,7 +102,7 @@ async def continue_conversation(
 
 ## Streaming
 
-`run_stream` is an async context manager, and its text deltas feed a `StreamingResponse` directly. This method goes beside `answer` on the same service and assembles its deps through the same `_build_deps()`:
+`run_stream` is an async context manager, and its text deltas feed a `StreamingResponse` directly. This method goes beside `answer` on the same service and assembles its deps through the same `_build_deps()`; `AsyncGenerator` comes from `collections.abc`:
 
 ```python
 class CatalogAssistantService:
@@ -110,7 +110,7 @@ class CatalogAssistantService:
         self,
         payload: CatalogAssistantRequest,
         agent: Agent[CatalogAssistantDeps, CatalogAssistantResponse],
-    ) -> AsyncIterator[str]:
+    ) -> AsyncGenerator[str]:
         async with agent.run_stream(
             payload.question,
             deps=self._build_deps(),

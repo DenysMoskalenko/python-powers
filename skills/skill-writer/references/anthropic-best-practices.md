@@ -7,8 +7,8 @@ Facts from the Agent Skills specification, Anthropic's skill best-practices page
 | Item | Upstream | House |
 |---|---|---|
 | `name` | 1–64 chars, `a-z0-9-`, equals the folder name, no `claude`/`anthropic` | same |
-| `description` | required, ≤1,024 chars, no `<` or `>` anywhere in the frontmatter (claude.ai uploads reject them); Claude Code lists `description` + `when_to_use` truncated at 1,536 chars; Codex loads name + description under 2% of context or 8,000 chars total | 30–60 words, ≤400 chars, triggers first, then keywords, file names and error strings |
-| `SKILL.md` size | under 500 lines and 5,000 words; body loaded on activation | 300 lines and 1,800 words, enforced by `evals/check_skills.py` |
+| `description` | required, ≤1,024 chars, no XML tags in `name` or `description` (claude.ai uploads reject them); Claude Code lists `description` + `when_to_use` truncated at 1,536 chars; Codex loads name + description under 2% of context or 8,000 chars total | 30–60 words, ≤400 chars, triggers first, then keywords, file names and error strings; no `<` or `>` anywhere in the frontmatter |
+| `SKILL.md` size | under 500 lines; 5,000 words (guide) or 5,000 tokens (spec); body loaded on activation | 300 lines and 2,000 words (`wc -w`) |
 | References | `references/` (also `scripts/`, `assets/`), one level deep, linked by relative path, loaded on demand; contents list when long; no `README.md` inside the skill folder | `references/<topic>.md`, contents list above 100 lines, same budgets as `SKILL.md` |
 | Spec frontmatter | `name`, `description`, optional `license`, `compatibility`, `metadata`, experimental `allowed-tools` | plus `disable-model-invocation`, `paths`, `when_to_use` (Claude Code / Cursor); `> Requires` in the body instead of `compatibility` |
 | Host-only keys | Claude Code also honours `argument-hint`, `context`, `agent`, `model`, `effort`, `hooks`; claude.ai uploads reject unknown keys; Codex ignores them and reads `agents/openai.yaml` | not used |
@@ -23,7 +23,7 @@ Facts from the Agent Skills specification, Anthropic's skill best-practices page
 - Time-sensitive facts age badly; use capability language and keep versions in one place.
 - One term per concept throughout a skill.
 - Evals first: scenarios per skill (counts in `SKILL.md`, Creating a skill step 4), a baseline without the skill, evidence-graded, run on every model the team uses; descriptions tuned with should-load and near-miss should-not-load prompts, several runs each.
-- `claude plugin validate <dir>` validates only `.claude-plugin/marketplace.json`; a `SKILL.md` with unparsable frontmatter still loads, with an empty description, so parse frontmatter separately (`evals/check_skills.py` here).
+- `claude plugin validate <dir>` validates only `.claude-plugin/marketplace.json`; a `SKILL.md` with unparsable frontmatter still loads, with an empty description, so parse frontmatter separately.
 
 ## Host behaviour worth knowing
 

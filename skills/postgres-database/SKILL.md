@@ -14,7 +14,7 @@ This skill owns the database half of a service: SQLAlchemy models, relationship 
 
 ## Models
 
-One entity per module under `app/infrastructure/db/models/`. Annotate every column with `Mapped[]` and `mapped_column()`. Give every `String` an explicit length matching the schema's `max_length`, so the database rejects oversized values that slipped past validation; use `Text` for genuinely unbounded prose and leave `max_length` off the pydantic field too.
+One entity per module under `app/infrastructure/db/models/`. Annotate every column with `Mapped[]` and `mapped_column()`. Give every `String` an explicit length matching the schema's `max_length`, so the database rejects oversized values that slipped past validation (widening later is a catalog-only change); use `Text` for genuinely unbounded prose and leave `max_length` off the pydantic field too.
 
 ```python
 # app/infrastructure/db/models/author.py
@@ -49,7 +49,7 @@ class AuthorModel(Base):
     )
 ```
 
-Timestamps are `DateTime(timezone=True)` with `server_default=func.now()`: a `timestamptz` the database clock fills; `updated_at` adds `onupdate=func.now()` for ORM-issued updates.
+Timestamps are `DateTime(timezone=True)` with `server_default=func.now()`: a `timestamptz` the database clock fills; `updated_at` adds `onupdate=func.now()`, which fires for every update issued through SQLAlchemy (Core or ORM) but not for raw SQL from other clients.
 
 Sibling model modules refer to each other through an `if TYPE_CHECKING:` import plus a quoted annotation: the guarded import keeps ruff's `F821` quiet, and SQLAlchemy resolves `'BookModel'` from its declarative registry, so there is no runtime cycle.
 
@@ -99,11 +99,13 @@ class BookModel(Base):
     )
 ```
 
-Single-column constraints and indexes get their names from the naming convention on `Base` (`references/setup.md`). A composite constraint needs an explicit `name=`: the `uq` template interpolates only the first column, so two composite constraints starting with the same column would collide. Mirror a schema's `ge`/`le` as `CheckConstraint('rating BETWEEN 1 AND 5', name='rating_range')` in `__table_args__`; every `CheckConstraint` needs a `name=`, because the `ck` template interpolates `%(constraint_name)s` and an unnamed check raises `InvalidRequestError`.
+Single-column constraints and indexes get their names from the naming convention on `Base` (`references/setup.md`). A composite constraint needs an explicit `name=`: the `uq` template interpolates only the first column, so two composite constraints starting with the same column would collide.
+
+A numeric column drawn from a fixed range gets the same treatment as a bounded `String`: mirror the schema's `ge`/`le` as `CheckConstraint('rating BETWEEN 1 AND 5', name='rating_range')` in `__table_args__`, so a value that reached the database another way is rejected there too. Every `CheckConstraint` needs a `name=`, because the `ck` template interpolates `%(constraint_name)s` and an unnamed check raises `InvalidRequestError`.
 
 ### Cascades and deletes
 
-`passive_deletes=True` on the parent relationship and `ondelete='CASCADE'` on the child's foreign key are one decision: the service deletes parents with a Core `delete()`, which bypasses ORM cascades, so without the database rule that delete raises `IntegrityError: ... violates foreign key constraint`. If the database should not cascade, drop `passive_deletes=True` and delete children explicitly.
+`passive_deletes=True` on the parent relationship and `ondelete='CASCADE'` on the child's foreign key are one decision: `passive_deletes=True` tells the ORM not to load and delete children itself because the database will, and the service deletes parents with a Core `delete()`, which bypasses ORM cascades anyway, so without the database rule that delete raises `IntegrityError: ... violates foreign key constraint`. If the database should not cascade, drop `passive_deletes=True` and delete children explicitly.
 
 ### Primary keys
 
@@ -248,9 +250,11 @@ Writes are single statements with `.returning(...)`, one round trip writing and 
         return book
 ```
 
-`create_book` looks the author up first so an unknown `author_id` is a `NotFoundError` instead of an `IntegrityError`. A delete that matched no row is logged and returns (the route answers 204); raise `NotFoundError` only when the caller must distinguish "deleted" from "never existed". `exclude_unset=True` makes PATCH partial: an omitted field stays out of `changes`, a field sent as `null` clears the column; the patch schema that keeps `null` off NOT NULL columns is in `fastapi-service`, as are the handlers mapping domain exceptions to HTTP.
+`create_book` looks the author up first so an unknown `author_id` is a `NotFoundError` instead of an `IntegrityError`. A delete that matched no row is logged and returns (the route answers 204); raise `NotFoundError` only when the caller must distinguish "deleted" from "never existed".
 
-Request-scoped services do not call `commit()` or `rollback()`; the transaction belongs to `open_db_session()`, which commits on a clean exit and rolls back on an exception. `begin_nested()` around a single statement only adds a round trip; it earns its place when part of a larger transaction must roll back on its own, such as a bulk import that continues past a failing row.
+`exclude_unset=True` makes PATCH partial: an omitted field stays out of `changes`, while a field sent as `null` clears the column. The patch schema that keeps `null` off NOT NULL columns belongs to `fastapi-service`, as do the handlers that map domain exceptions to HTTP.
+
+Request-scoped services do not call `commit()` or `rollback()`; the transaction belongs to `open_db_session()`, which commits on a clean exit and rolls back on an exception. `begin_nested()` around a single statement only adds a round trip; it earns its place when part of a larger transaction must roll back on its own, such as a bulk import that continues past a failing row or an `IntegrityError` you catch and recover from.
 
 ## Migrations
 
@@ -262,7 +266,7 @@ uv run alembic revision --autogenerate -m "add books"
 
 Autogenerate diffs the models against the database `DATABASE_URL` points at, so start the local stack (`docker compose up -d`) and bring it to head (`make migrate`) first; a stale schema produces a wrong diff. `migrate` and `downgrade` run only against the local compose database unless the user names another target.
 
-Then read the generated revision. Autogenerate renders a column rename as a drop plus an add, and sees neither enum value changes nor a new `CheckConstraint` — both come back as an empty revision; hand-edit those and write data migrations by hand. `migrations/env.py` imports every model module before reading `Base.metadata`; a model that is never imported is invisible and its table comes back as a drop.
+Then read the generated revision. Autogenerate renders a column rename as a drop plus an add, which destroys data, and sees neither enum value changes nor a new `CheckConstraint` — both come back as an empty revision; hand-edit those and write data migrations by hand. `migrations/env.py` imports every model module before reading `Base.metadata`; a model that is never imported is invisible and its table comes back as a drop.
 
 ## Setup and testing
 
@@ -280,5 +284,5 @@ Then read the generated revision. Autogenerate renders a column rename as a drop
 
 - A unique constraint over a nullable column does nothing by default, because PostgreSQL treats every NULL as distinct; `postgresql_nulls_not_distinct=True` renders `UNIQUE NULLS NOT DISTINCT`.
 - `insert(...).returning(...)` through `session.scalar()` reaches the server immediately; the row is visible to the rest of the transaction with no `flush()`.
-- `update(...).values()` with an empty mapping compiles: with `onupdate=func.now()` it runs `UPDATE books SET updated_at=now()` on a PATCH that changed nothing; without one it fails with `syntax error at end of input`. Hence the early return in `patch_book`.
+- `update(...).values()` with an empty mapping compiles: with `onupdate=func.now()` it runs `UPDATE books SET updated_at=now()` on a PATCH that changed nothing; without one it reaches Postgres with an empty `SET` and fails with a syntax error. Hence the early return in `patch_book`.
 - `Result.unique()` is only needed when a `joinedload` targets a collection; anywhere else the `joinedload` should probably be a `selectinload`.

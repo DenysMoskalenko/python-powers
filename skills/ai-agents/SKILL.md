@@ -102,7 +102,7 @@ def build_catalog_assistant_agent(model: Model) -> Agent[CatalogAssistantDeps, C
     return agent
 ```
 
-`retries` stays at the library default. It budgets tool-argument and output validation retries — the `ModelRetry` loop that lets the model correct a malformed tool call — never provider or transport errors, so `retries=0` turns one malformed tool call, a routine event, into a 500.
+`retries` stays at the library default. It budgets tool-argument and output validation retries — the `ModelRetry` loop that lets the model correct a malformed tool call — never provider or transport errors, which surface on the first attempt whatever the budget says; `retries=0` therefore turns one malformed tool call, a routine event, into a 500.
 
 Agent-level `ModelSettings` carries `max_tokens` from the response contract and `thinking` as the unified effort level when the workload wants reasoning. Leave `temperature` and other sampling settings out: providers disagree on them — OpenAI and Anthropic drop them with a warning once reasoning is on, Anthropic's newest models drop them regardless, Bedrock forwards them and lets the provider reject the call. Set sampling on the `Model` in the registry once the target model is known.
 
@@ -120,7 +120,7 @@ Rules:
 """.strip()
 ```
 
-`instructions=` is the house default: they go on the wire once per turn from the agent that is running. `system_prompt=` parts are replayed from `message_history`, so a history that already carries one shadows the current agent's prompt and the model reads the stale text; use `system_prompt=` only when replaying the original prompt is the point. Write instructions as rules ("Use `count_items` for counts") rather than descriptions, and name the case where no tool should be called.
+`instructions=` is the house default: they go on the wire once per turn from the agent that is running. `system_prompt=` parts are replayed from `message_history`, so a history that already carries one shadows the current agent's prompt and the model reads the stale text; use `system_prompt=` only when replaying the original prompt is the point. Write instructions as rules ("Use `count_items` for counts") rather than descriptions ("You can count items"), and name the case where no tool should be called.
 
 ## Tool schemas
 
@@ -269,7 +269,7 @@ class CatalogAssistantService:
         return CatalogAssistantDeps(catalog_service=self._catalog_service)
 ```
 
-`request_limit` caps the model requests one run may make (the library default is 50), so a model that keeps calling the same tool stops instead of looping. Exceeding it raises `UsageLimitExceeded`; map it to 503 in `app/core/exception_handlers.py`, because the request was well formed. `UsageLimits` also carries `tool_calls_limit`, `output_tokens_limit`, `total_tokens_limit` and `cost_limit`, raising the same exception; add one when a tool is expensive or the answer has a hard size budget.
+`request_limit` caps the model requests one run may make (the library default is 50), so a model that keeps calling the same tool stops instead of looping. Exceeding it raises `UsageLimitExceeded`; map it to 503 in `app/core/exception_handlers.py`, because the request was well formed and a 4xx would tell the caller to fix something that is not wrong. `UsageLimits` also carries `tool_calls_limit`, `output_tokens_limit`, `total_tokens_limit` and `cost_limit`, raising the same exception; add one when a tool is expensive or the answer has a hard size budget.
 
 ## Reference files
 

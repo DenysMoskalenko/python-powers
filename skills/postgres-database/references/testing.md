@@ -176,7 +176,7 @@ async def session(app: FastAPI, _engine: AsyncEngine) -> AsyncGenerator[AsyncSes
 
 The fixture opens the outer transaction itself and binds the session to that connection, so rolling back at the end erases everything the test wrote, schema included if it created any.
 
-`join_transaction_mode='create_savepoint'` makes the session open a SAVEPOINT instead of joining the outer transaction directly. An application `commit()` then releases the savepoint rather than committing the outer transaction, so production code that commits — request-scoped `open_db_session()` does, on every request the test makes — cannot escape the rollback.
+`join_transaction_mode='create_savepoint'` makes the session open a SAVEPOINT instead of joining the outer transaction directly. An application `commit()` then releases the savepoint rather than committing the outer transaction, so a `commit()` from any code path — a service that breaks the no-commit rule, or code that opens `open_db_session()` itself — cannot escape the rollback. Requests under test never reach `open_db_session()`: the override hands them this session directly.
 
 Installing the override through `temporary_override` restores whatever was there before, so a later test that requests only `client` gets the default override back instead of silently reusing this test's closed session.
 

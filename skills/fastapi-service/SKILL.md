@@ -33,7 +33,7 @@ app/
 
 SQLAlchemy models are the deliberate exception: they stay in `app/infrastructure/db/models/` so Alembic autogenerates from a single metadata and cross-entity relationships need no cross-domain imports.
 
-Start flat with those three files. Promote a concern to a subpackage once it splits into two or more files — `books/services/` holding `service_books.py` and `service_books_validator.py` — with an `__init__.py` facade re-exporting the public names through `__all__`; siblings inside the package import each other directly (`from .service_books import BookService`) to avoid circular imports. Keep the descriptive filename prefix so a file is unambiguous in search results.
+Start flat with those three files. Promote a concern to a subpackage once it splits into two or more files — `books/services/` holding `service_books.py` and `service_books_validator.py` — with an `__init__.py` facade re-exporting the public names through `__all__`, so outside callers import from the package root (`from app.domains.books.services import BookService`), never the deep path; siblings inside the package import each other directly (`from .service_books import BookService`) to avoid circular imports. Keep the descriptive filename prefix so a file is unambiguous in search results.
 
 In a project that already uses a different layout, add the endpoint where its siblings live and do not migrate the tree; propose the move separately.
 
@@ -96,7 +96,7 @@ async def delete_author(author_id: int, service: Annotated[BookService, Depends(
 
 ### Query-parameter models
 
-FastAPI expands a `Query()` parameter model into its fields only when it is the route's only query parameter of any kind. A second `Query()` model or a bare scalar such as `limit: int = 10` beside it stops the expansion, and every request answers 422 with `Field required` per unexpanded model. Query parameters arriving through a `Depends()` sub-dependency (`*ListSorting`, `fastapi_pagination.Params`) are the exception: parsing stays intact and the model only collapses to one opaque parameter in `/docs`.
+FastAPI expands a `Query()` parameter model into its fields only when it is the route's only query parameter of any kind. A second `Query()` model or a bare scalar such as `limit: int = 10` beside it stops the expansion, and every request answers 422 with `Field required` per unexpanded model. Query parameters arriving through a `Depends()` sub-dependency (`*ListSorting`, `fastapi_pagination.Params`) are the exception: parsing stays intact, and the only cost is that the `Query()` model shows in `/docs` as one opaque parameter beside them — which a paginated route always pays, through `page` and `size`.
 
 So give `Query()` to the one model that carries a `list[...]` field, as `list_books` does, and keep every other query-reading model on `Depends()`. `Depends()` on a model with a `list[...]` field moves that field into the JSON body, so `?ids=1&ids=2` answers 200 with `ids` set to `None`. When no field is a list, `Depends()` is the better spelling: both parse, but `Depends()` renders each filter as its own parameter in `/docs`. Two models that each need `Query()` merge into one filters model.
 
@@ -135,7 +135,7 @@ class BookService:
 
 - Services raise domain exceptions; `HTTPException` never appears below the route layer, so the same method works from a worker, a CLI, or a test, and the status code is decided in one place.
 - A request-scoped service does not call `commit()` or `rollback()`; `postgres-database` owns the transaction boundary in `open_db_session`.
-- Log at `info` where an operator needs the event later: a situation the service tolerates (a delete that matched no row, a retry) and a write that creates or destroys something. Give it an f-string message that reads on its own and repeat the identifiers under `extra={'extra': {...}}`: a top-level `extra` key makes `Logger.makeRecord` raise `KeyError` as soon as it collides with a `LogRecord` attribute (`name`, `module`, `args`, `filename`), and the nesting gives JSON formatters one stable key.
+- Log at `info` where an operator needs the event later: a situation the service tolerates (a delete that matched no row, a retry) and a write that creates or destroys something. Give it an f-string message that reads on its own and repeat the identifiers under `extra={'extra': {...}}`: a top-level `extra` key makes `Logger.makeRecord` raise `KeyError` as soon as it collides with a `LogRecord` attribute (`name`, `module`, `args`, `filename`, and the rest), and the nesting gives JSON formatters one stable key.
 
 ```python
 _logger.info(
@@ -270,4 +270,4 @@ Handlers in `app/core/exception_handlers.py` map them to responses and are colle
 ## Gotchas
 
 - A class injected with `Annotated[Service, Depends()]` may take only injectable parameters. A plain default such as `items: tuple[Item, ...] = DEFAULT_ITEMS` becomes a request-body field, flips the endpoint into embedded-body mode, and every request answers 422 with `Field required` for the real payload. Keep such constants at module level.
-- The lifespan does not run under `httpx2.ASGITransport`; `python-testing` owns the `started_client` fixture that enters it.
+- The lifespan does not run under `httpx2.ASGITransport`, so migrations and warm-up are skipped in tests unless the fixture enters `app.router.lifespan_context(app)`; `python-testing` owns that `started_client` fixture.

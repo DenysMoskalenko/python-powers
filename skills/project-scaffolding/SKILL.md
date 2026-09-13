@@ -9,9 +9,9 @@ Generate a new service from a pinned revision of the BoilerplateBuilder cookiecu
 
 > Requires uv, git, make, network access to github.com, and a running Docker daemon for fastapi_db / fastapi_db_agent.
 
-**Related**: `python-code-style` defines the naming used here (`<Entity>Model`, `_logger`, `*Error`); load it alongside. Also `python-tooling`, `python-testing`, `fastapi-service`, `postgres-database`, `ai-agents`.
+**Related**: the hand-off skills `fastapi-service`, `postgres-database`, `ai-agents`, `python-testing`, `python-tooling`; `python-code-style` governs everything written after the scaffold.
 
-Ask the user about their domain, not about the template. Before running the generator, name the BoilerplateBuilder revision you will pin and what its post-generation hook does on their machine: `uv lock && uv sync` over the network, `git init` plus an initial commit when `initialize_git=yes`, and `prek install`; with `Extract Here`, also list the files it overwrites (`README.md`, `.gitignore`). Run it once they confirm; that confirmation is separate from the one domain question below. Afterwards, report the revision used and the result of the quality gate.
+Ask the user about their domain, never about template inputs — those all have baselines below. Before running the generator, tell them which BoilerplateBuilder revision you will pin and what its post-generation hook does on their machine: `uv lock && uv sync` over the network, `git init` plus an initial commit when `initialize_git=yes`, and `prek install`; with `Extract Here`, also list the files it overwrites (`README.md`, `.gitignore`). Run it once they say go. Afterwards, report the revision used and the result of the quality gate, so the origin of their code and its verified state are both on the record.
 
 ## Choose the project type
 
@@ -38,7 +38,7 @@ Always pass `project_name` and `project_type`. Derive the description and author
 | `project_type` | from the table above, always explicitly |
 | `project_description` | one line describing the service, taken from the conversation |
 | `author_name`, `author_email` | `git config user.name` and `user.email`; when unset, keep the template placeholder and tell the user to fix it |
-| `python_version` | baseline `3.13`, the floor these skills are written against; the template also accepts `3.12` and `3.11` for a caller who pins an older runtime and accepts that examples using PEP 695 syntax no longer apply |
+| `python_version` | baseline `3.13`, the floor these skills are written against; the template also accepts `3.12` (the examples' PEP 696 defaults such as `AsyncGenerator[T]` then need an explicit `, None`) and `3.11` (PEP 695 syntax no longer applies either) |
 | `use_github_actions` | baseline `yes`; `no` when CI lives elsewhere |
 | `initialize_git` | baseline `yes`; `no` when the target directory already has `.git` |
 | `use_otel_observability` | baseline `no`; `yes` when the user asks for tracing or metrics |
@@ -60,7 +60,7 @@ uv tool run cookiecutter https://github.com/DenysMoskalenko/BoilerplateBuilder \
   author_email="ada@example.com"
 ```
 
-- `--checkout` pins the revision this skill was verified against, so the same prompt produces the same project tomorrow; without it `main` moves. To bump it, regenerate all four project types from the new revision, run `make check` in each, then update the hash here, in `evals/cases.json` (`beh-scaffold-command`), and in `evals/scenarios.md`.
+- `--checkout` pins the revision this skill was verified against, so the same prompt produces the same project tomorrow; without it `main` moves. To bump it, regenerate all four project types from the new revision, run `make check` in each, then update the hash here.
 - `--no-input` skips the interactive prompts and applies the template default for every key you omit.
 - `-o <dir>` generates into somewhere other than the current directory; with `Extract Here` that directory is the one the project fills.
 
@@ -82,7 +82,7 @@ uv tool run cookiecutter https://github.com/DenysMoskalenko/BoilerplateBuilder \
 
 ## Gotchas
 
-- Cookiecutter silently ignores a key that is absent from `cookiecutter.json`, so a typo or a retired input such as `use_pre_commit` looks accepted and changes nothing; values for keys that do exist are validated against their choice list.
+- Cookiecutter silently ignores a key that is absent from `cookiecutter.json`, so a typo or a retired input such as `use_pre_commit` looks accepted and changes nothing; values for keys that do exist are validated against their choice list. `cookiecutter.json` at the pinned revision is the authoritative key list.
 - Every input is a string: booleans are `yes` / `no`, and `extract_to_current_dir` is `Create New` / `Extract Here`, not `true` / `false`.
 - `Extract Here` overwrites same-named files in the target directory, `README.md` and `.gitignore` included, so a clone that carries either one loses it.
 - The template's own default for `project_type` is `fastapi_db_agent`, the heaviest variant, so a slim service inherits a database and an agent whenever the key is omitted.
