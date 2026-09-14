@@ -1,5 +1,7 @@
 .DS_Store
 .idea/
+.ruff_cache/
+__pycache__/
 
 # Local environment
 .env
@@ -13,3 +15,6 @@
 # Local scratch / research / sandbox artefacts (never committed)
 tmp/
 /.cursor/
+
+# Eval harness and its output (kept local, never committed)
+evals/

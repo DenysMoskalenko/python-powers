@@ -1,11 +1,11 @@
 ---
 name: ai-agents
-description: Use when adding an LLM, assistant, or chatbot endpoint to a FastAPI service, or when building, integrating, or testing pydantic-ai agents — defining the Agent, typed dependencies, tools, system prompts, model registry, agent-as-FastAPI-dependency wiring, or agent test fixtures (TestModel, FunctionModel, provider error mapping).
+description: Use when adding an LLM, assistant, or chatbot endpoint to a FastAPI service, or when building, integrating, or testing pydantic-ai agents — the Agent, system prompts, typed deps, tools, model registry, agent-as-FastAPI-dependency wiring, ModelHTTPError mapping, and agent test fixtures (TestModel, FunctionModel, provider error mapping).
 ---
 
 # AI Agent Patterns
 
-Patterns for building pydantic-ai agents integrated into FastAPI services. An agent is a module like any other (`app/modules/<module>/`) — only its internals (builder, tools, prompt, agent/tool schemas) are agent-specific.
+Patterns for building pydantic-ai agents integrated into FastAPI services. An agent is a module like any other (`app/domains/<feature>/`) — only its internals (builder, tools, prompt, agent/tool schemas) are agent-specific.
 
 > Requires Python 3.13+, pydantic-ai, FastAPI.
 > Examples use `app/` as the top-level package (the reference project's convention). Substitute your package name if different.
@@ -19,7 +19,7 @@ For generic FastAPI route/service patterns use `fastapi-service`. For database q
 An agent is a module like any other feature — its builder, tools, prompt, service, route, and schemas live together in one slice. Here, `catalog_assistant`:
 
 ```text
-modules/catalog_assistant/
+app/domains/catalog_assistant/
   routes.py            # thin route handler
   service.py           # runs the agent with assembled deps
   agents.py            # build_*_agent (builder) + get_*_agent (FastAPI dependency)
@@ -39,7 +39,7 @@ Define agent dependencies as a frozen dataclass in `schemas/schemas_agent.py`. T
 ```python
 from dataclasses import dataclass
 
-from app.modules.catalog.service import CatalogService
+from app.domains.catalog.service import CatalogService
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,9 +60,9 @@ from fastapi_pagination import Params
 from pydantic_ai import Agent, ModelSettings, RunContext
 from pydantic_ai.models import Model
 
-from app.modules.catalog.schemas import CatalogListSorting
-from app.modules.catalog_assistant.prompts import CATALOG_ASSISTANT_SYSTEM_PROMPT
-from app.modules.catalog_assistant.schemas import (
+from app.domains.catalog.schemas import CatalogListSorting
+from app.domains.catalog_assistant.prompts import CATALOG_ASSISTANT_SYSTEM_PROMPT
+from app.domains.catalog_assistant.schemas import (
     CatalogAssistantDeps,
     CatalogAssistantResponse,
     CatalogToolItem,
@@ -77,8 +77,7 @@ def build_catalog_assistant_agent(model: Model) -> Agent[CatalogAssistantDeps, C
         output_type=CatalogAssistantResponse,
         deps_type=CatalogAssistantDeps,
         system_prompt=CATALOG_ASSISTANT_SYSTEM_PROMPT,
-        retries=0,
-        model_settings=ModelSettings(max_tokens=2048, thinking='low', temperature=0.7),
+        model_settings=ModelSettings(max_tokens=2048, thinking='low'),
     )
 
     @agent.tool
@@ -104,7 +103,8 @@ Key patterns:
 - Tools registered with `@agent.tool` inside the builder — each tool gets `RunContext[Deps]`
 - Tool inputs are Pydantic `BaseModel` subclasses — the LLM sees their JSON schema
 - Tools call services from `ctx.deps`, never import globals
-- `retries=0` to fail fast; retries mask real failures in tests and production alike
+- `retries` stays at the library default (1): it budgets tool-argument and output validation retries, never provider errors; `retries=0` turns one malformed tool call into a failure
+- No `temperature` with `thinking`: OpenAI ignores sampling settings once reasoning is on
 
 ## Tool input schemas
 
@@ -113,7 +113,7 @@ Tool parameters are Pydantic models. The LLM sees them as function parameter sch
 ```python
 from pydantic import BaseModel, Field
 
-from app.modules.catalog.schemas import CatalogListFilters
+from app.domains.catalog.schemas import CatalogListFilters
 
 
 class CountCatalogItemsToolInput(BaseModel):
@@ -145,18 +145,18 @@ Rules outperform descriptions ("Use X for Y" beats "You can use X").
 
 ## Model registry
 
-A `TypeAlias` mapping request model names to fully constructed `Model` instances, defined in `agents.py`. Keep provider wiring in `infrastructure/llms/`:
+A `type` alias mapping request model names to fully constructed `Model` instances, defined in `agents.py`. Keep provider wiring in `infrastructure/llms/`:
 
 ```python
-from typing import Annotated, TypeAlias
+from typing import Annotated
 
 from fastapi import Depends
 from pydantic_ai.models import Model
 
+from app.domains.catalog_assistant.schemas import AssistantModelName
 from app.infrastructure.llms.registry import get_fallback_model, get_primary_model
-from app.modules.catalog_assistant.schemas import AssistantModelName
 
-ModelRegistry: TypeAlias = dict[AssistantModelName, Model]
+type ModelRegistry = dict[AssistantModelName, Model]
 
 
 def get_model_registry(
@@ -190,7 +190,7 @@ from typing import Annotated
 from fastapi import Depends
 from pydantic_ai import Agent
 
-from app.modules.catalog_assistant.schemas import (
+from app.domains.catalog_assistant.schemas import (
     CatalogAssistantDeps,
     CatalogAssistantRequest,
     CatalogAssistantResponse,
@@ -213,13 +213,16 @@ from typing import Annotated
 
 from fastapi import Depends
 from pydantic_ai import Agent
+from pydantic_ai.usage import UsageLimits
 
-from app.modules.catalog.service import CatalogService
-from app.modules.catalog_assistant.schemas import (
+from app.domains.catalog.service import CatalogService
+from app.domains.catalog_assistant.schemas import (
     CatalogAssistantDeps,
     CatalogAssistantRequest,
     CatalogAssistantResponse,
 )
+
+CATALOG_ASSISTANT_USAGE_LIMITS = UsageLimits(request_limit=5)
 
 
 class CatalogAssistantService:
@@ -231,9 +234,12 @@ class CatalogAssistantService:
         payload: CatalogAssistantRequest,
         agent: Agent[CatalogAssistantDeps, CatalogAssistantResponse],
     ) -> CatalogAssistantResponse:
-        result = await agent.run(payload.question, deps=CatalogAssistantDeps(catalog_service=self._catalog_service))
+        deps = CatalogAssistantDeps(catalog_service=self._catalog_service)
+        result = await agent.run(payload.question, deps=deps, usage_limits=CATALOG_ASSISTANT_USAGE_LIMITS)
         return result.output
 ```
+
+`request_limit` caps model requests per run (library default 50); exceeding it raises `UsageLimitExceeded`, which is not a `ModelAPIError`, so register its own handler in `app/core/exception_handlers.py` beside the domain handlers and answer 503.
 
 ## Agent route
 
@@ -245,13 +251,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from pydantic_ai import Agent
 
-from app.modules.catalog_assistant.agents import get_catalog_assistant_agent
-from app.modules.catalog_assistant.schemas import (
+from app.domains.catalog_assistant.agents import get_catalog_assistant_agent
+from app.domains.catalog_assistant.schemas import (
     CatalogAssistantDeps,
     CatalogAssistantRequest,
     CatalogAssistantResponse,
 )
-from app.modules.catalog_assistant.service import CatalogAssistantService
+from app.domains.catalog_assistant.service import CatalogAssistantService
 
 router = APIRouter(tags=['Catalog Assistant'])
 
@@ -267,11 +273,11 @@ async def create_response(
 
 ## Testing
 
-See `reference/testing.md` for the full test pattern: blocking real model requests, `TestModel` fixture, `FunctionModel` for deterministic responses, and `agent.override()` for per-test model swaps.
+See `references/testing.md` for the full test pattern: blocking real model requests, `TestModel` fixture, `FunctionModel` for deterministic responses, and `agent.override()` for per-test model swaps.
 
 ## Provider-specific behavior
 
-See `reference/providers.md` for provider-specific model settings (Bedrock caching) and provider error mapping tests (Bedrock `ClientError`, OpenAI `RateLimitError` → HTTP status mapping).
+See `references/providers.md` for provider-specific model settings (Bedrock caching) and provider error mapping tests (`ModelHTTPError`, `ModelAPIError` → HTTP status mapping).
 
 ## Red Flags — STOP
 
@@ -281,7 +287,7 @@ These mean the agent boundary is drifting. Stop and apply the named rule:
 |---|---|
 | Import a service directly inside an agent tool | Agent dependencies — tools use `ctx.deps` only |
 | Write a system prompt as "You can use..." | System prompts — write rules as "Use X for Y" |
-| Set `retries > 0` on the agent | Agent factory — use `retries=0` so failures surface |
+| Set `retries=0` on the agent | Agent factory — keep the library default; `retries` budgets validation retries, not provider errors |
 | Instantiate provider models inside the model registry | Model registry — delegate provider wiring to `infrastructure/llms/` |
 | Let tests run without `ALLOW_MODEL_REQUESTS = False` | Testing — block real model requests globally |
 | Resolve output tools in mocks by list index | Testing — resolve output tools by schema keys |
@@ -291,4 +297,4 @@ These mean the agent boundary is drifting. Stop and apply the named rule:
 - `ALLOW_MODEL_REQUESTS = False` must be in `pytest_configure` before any agent import
 - Agent tools access services through `ctx.deps` only — never import at module level
 - `agent.override()` is scoped to a `with` block; original model is restored automatically
-- Provider-specific model settings (e.g., `BedrockModelSettings`) require `isinstance` checks
+- Provider-specific model settings (e.g., `BedrockModelSettings`) live in one `isinstance` branch per provider in the settings builder (`references/providers.md`)

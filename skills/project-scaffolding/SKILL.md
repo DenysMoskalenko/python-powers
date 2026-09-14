@@ -1,13 +1,13 @@
 ---
 name: project-scaffolding
-description: Use when starting a brand-new Python/FastAPI service from zero — "create an app that…", bootstrapping a fresh repo, or scaffolding a new microservice/API that needs tests, linters, CI, and Docker working from the first commit. Greenfield only; never for adding features to an existing project. For tooling changes in an existing repo see `python-tooling`.
+description: Use when starting a brand-new FastAPI service from zero — "create a FastAPI app/API/microservice that…", bootstrapping a fresh repo that needs tests, linters, CI, and Docker working from the first commit. Greenfield HTTP services only — not for CLIs, libraries, or adding features to an existing project. For tooling changes in an existing repo see `python-tooling`.
 ---
 
 # Project Scaffolding (Greenfield Only)
 
 When creating a brand-new service from zero, generate it from the BoilerplateBuilder template instead of hand-assembling the app structure, tests, tooling, Docker, and CI. The template ships a project where the test suite, linters, and CI already pass. Treat the template as an implementation detail — infer its inputs from the conversation so the user never has to know a generator was involved.
 
-> Requires uv (or pip) and network access to `github.com/DenysMoskalenko/BoilerplateBuilder`.
+> Requires uv (or pip), network access to `github.com/DenysMoskalenko/BoilerplateBuilder`, and a running Docker daemon for the DB project types (their tests start Postgres through testcontainers).
 
 **Related**: `python-tooling`, `python-testing`, `fastapi-service`, `postgres-database`, `ai-agents`.
 
@@ -35,7 +35,6 @@ Infer every other input from the conversation too. When a value genuinely forks 
 | Input | Baseline | Override when… |
 |---|---|---|
 | `python_version` | `3.13` | the user pins an older runtime |
-| `use_pre_commit` | `yes` | — |
 | `use_github_actions` | `yes` | the user says no CI / hosts elsewhere |
 | `initialize_git` | `yes` | the user asks to skip it (e.g. a nested service folder that must not own its own `.git`) |
 | `use_otel_observability` | `no` | the user mentions tracing, metrics, or observability |
@@ -43,8 +42,8 @@ Infer every other input from the conversation too. When a value genuinely forks 
 
 These tables cover the inputs you normally set. For anything not covered here — an input you're unsure about, an allowed value, or an option-specific detail — read the template directly instead of guessing:
 
-- Inputs and their allowed values: [`cookiecutter.json`](https://github.com/DenysMoskalenko/BoilerplateBuilder/blob/main/cookiecutter.json)
-- What each `project_type` ships and how it runs: [the template README](https://github.com/DenysMoskalenko/BoilerplateBuilder)
+- Inputs and their allowed values: [`cookiecutter.json`](https://github.com/DenysMoskalenko/BoilerplateBuilder/blob/492fc9b1e752a761e6a65182626502b8569e8143/cookiecutter.json)
+- What each `project_type` ships and how it runs: [the template README](https://github.com/DenysMoskalenko/BoilerplateBuilder/tree/492fc9b1e752a761e6a65182626502b8569e8143)
 
 Consulting the template is your own research — keep it invisible to the user; never surface its prompts at them (see [Red Flags](#red-flags--stop)).
 
@@ -54,12 +53,14 @@ Drive the generator non-interactively, passing only the inputs that differ from 
 
 ```bash
 uv tool run cookiecutter https://github.com/DenysMoskalenko/BoilerplateBuilder \
+  --checkout 492fc9b1e752a761e6a65182626502b8569e8143 \
   --no-input \
   project_name="Books" \
   project_type=fastapi_db \
   python_version=3.13
 ```
 
+- `--checkout` pins the template revision this skill was verified against, so the same prompt produces the same project tomorrow; without it `main` moves. To bump it, regenerate all four project types from the new revision, run `make check` in each, then update the hash in this skill.
 - `--no-input` skips the interactive prompts and applies the template default for every key you omit.
 - **Always pass `project_type` explicitly** — the template's own default is the heaviest variant (`fastapi_db_agent`).
 - Boolean inputs take the strings `yes` / `no`.
@@ -67,7 +68,7 @@ uv tool run cookiecutter https://github.com/DenysMoskalenko/BoilerplateBuilder \
 
 ## After scaffolding
 
-1. `cd` into the generated project and confirm the green baseline **before writing any feature code** — run its quality gate (commands owned by `python-tooling`, typically `make check` or `make test`). A failing baseline is a generation problem, not your feature's; regenerate rather than patching around it.
+1. `cd` into the generated project and confirm the green baseline **before writing any feature code** — run its quality gate (commands owned by `python-tooling`, typically `make check` or `make test`). A failing baseline is a missing prerequisite or a generation problem, not your feature's; fix the prerequisite or regenerate rather than patching around it.
 2. Continue with the domain skills for the chosen `project_type` (see the hand-off column above). From here on it is ongoing work and this skill steps out.
 
 ## Red Flags — STOP
@@ -90,4 +91,4 @@ These mean you are scaffolding when you should not, or leaking the generator at 
 - Inputs are strings: booleans are `yes` / `no`, and `extract_to_current_dir` is `Create New` / `Extract Here` — not `true` / `false`.
 - Under `--no-input` an unconsidered key silently inherits the template default — decide every value before generating, then pass only the ones that differ from baseline.
 - The generated project already wires the `python-tooling`, `python-testing`, `fastapi-service` (and `postgres-database` / `ai-agents`) patterns — extend them, don't re-create them.
-- A fresh scaffold passes its own test and lint gate immediately; if it doesn't, regenerate rather than debugging a baseline you didn't write.
+- A fresh scaffold passes its own test and lint gate immediately (with Docker running for the DB types); if it doesn't, regenerate rather than debugging a baseline you didn't write.
