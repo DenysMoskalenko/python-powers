@@ -1,0 +1,3 @@
+interface:
+  display_name: "PostgreSQL Database"
+  short_description: "SQLAlchemy 2.0 async models, queries, Alembic, DB tests"

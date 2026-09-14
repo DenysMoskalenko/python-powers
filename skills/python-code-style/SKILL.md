@@ -1,6 +1,6 @@
 ---
 name: python-code-style
-description: Use when writing, reviewing, or refactoring Python 3.13+ code — type hints, code density, model-first data design, naming, dependency injection, early returns, fail-fast discipline, and architectural principles (KISS, YAGNI, SRP, DRY). Does not cover framework patterns, tool configuration, or test layout — those are owned by the matching domain skill.
+description: Use when writing, reviewing, or refactoring Python 3.13+ application or library code for readability or structure — type hints and PEP 695 aliases, code density, model-first data design, naming, dependency injection, early returns, fail-fast discipline, and architectural principles (KISS, YAGNI, SRP, DRY). For ruff and formatter configuration see `python-tooling`.
 ---
 
 # Python Code Style
@@ -16,30 +16,30 @@ Rules for writing production-quality Python. Every rule here reflects a delibera
 
 Type every public function, method, and class attribute. Types are documentation that the toolchain can verify.
 
-**Modern syntax only** (Python 3.13+) — use builtin generics (`list[int]`, `dict[str, int]`, `tuple[int, ...]`) and union syntax (`str | None`, `str | int`). Never import `List`, `Dict`, `Optional`, `Union`, `Tuple` from `typing`. Use `typing` only for types that have no builtin equivalent: `Annotated`, `TypeAlias`, `Literal`, `TypeVar`, `Protocol`, `TypedDict`, `Unpack`, `Generator`, `AsyncGenerator`, `TYPE_CHECKING`.
+**Modern syntax only** (Python 3.13+) — use builtin generics (`list[int]`, `dict[str, int]`, `tuple[int, ...]`) and union syntax (`str | None`, `str | int`). Never import `List`, `Dict`, `Optional`, `Union`, `Tuple` from `typing`. Use `typing` only for types that have no builtin equivalent: `Annotated`, `Literal`, `Protocol`, `TypedDict`, `Unpack`, `TYPE_CHECKING`; `Generator` and `AsyncGenerator` come from `collections.abc`. Declare aliases and generics with PEP 695 syntax (`type SortingOrder = Literal['asc', 'desc']`, `def first[ItemT](items: Sequence[ItemT]) -> ItemT | None`), not `TypeAlias` (deprecated since 3.12) or a module-level `TypeVar` — ruff rewrites both.
 
 **Never use `Any`** unless the value is genuinely unconstrained. If you reach for `Any` because you don't know the type, stop and find it. `Any` disables type checking for everything it touches.
 
-**Never use `object`** in type hints or code. If you think you need it, the actual type is either a protocol, a base class, or a generic.
+**Never use `object`** in type hints or code. If you think you need it, the actual type is either a protocol, a base class, or a generic. Exception: `__eq__(self, other: object)` — the required override signature; a narrower parameter is an incompatible override.
 
 ```python
-from typing import Annotated, Literal, TypeAlias
+from typing import Annotated, Literal
 
-SortingOrder: TypeAlias = Literal['asc', 'desc']
+type SortingOrder = Literal['asc', 'desc']
+
 
 class AuthorService:
     def __init__(self, session: Annotated[AsyncSession, Depends(get_session)]) -> None:
         self._session = session
 
-    async def get_author_by_id(self, author_id: int) -> Author:
-        ...
+    async def get_author_by_id(self, author_id: int) -> Author: ...
 ```
 
 ## Code Density
 
 Prefer fewer lines when the result is equally readable. Don't split into 3 lines what fits cleanly on 1. Let ruff handle line breaks — write the compact version and the formatter will split it if it exceeds the line length.
 
-Never leave trailing whitespace. Ruff and pre-commit should remove it automatically, but don't introduce formatting noise on purpose.
+Never leave trailing whitespace. Ruff and the prek hooks should remove it automatically, but don't introduce formatting noise on purpose.
 
 ```python
 return Author.model_validate(author)
@@ -69,19 +69,21 @@ When a value comes from a predefined set, represent it as `StrEnum` or `Literal`
 Decision rule:
 
 ```text
-Small, local, tied to one field or TypeAlias?           → Literal
+Small, local, tied to one field or type alias?          → Literal
 Reused across modules, needs iteration, or > 3 values?  → StrEnum
 ```
 
 ```python
 from enum import StrEnum
-from typing import Literal, TypeAlias
+from typing import Literal
+
 
 class AIModelName(StrEnum):
     GPT_5_4 = 'gpt-5.4'
     SONNET_4_6 = 'sonnet-4.6'
 
-SortingOrder: TypeAlias = Literal['asc', 'desc']
+
+type SortingOrder = Literal['asc', 'desc']
 ```
 
 ## Dependency Injection
@@ -148,7 +150,7 @@ Public methods first, private methods after. This puts the class interface — w
 ```python
 class AuthorService:
     async def get_author_by_id(self, author_id: int) -> Author: ...
-    async def list_authors(self, ...) -> Page[Author]: ...
+    async def list_authors(self, filters: AuthorListFilters, sorting: AuthorListSorting) -> Page[Author]: ...
     async def create_author(self, creation: AuthorCreate) -> Author: ...
     async def update_author(self, author_id: int, updates: AuthorUpdate) -> Author: ...
     async def delete_author_by_id(self, author_id: int) -> None: ...
@@ -156,7 +158,9 @@ class AuthorService:
     def _apply_filters(self, query: Select, filters: AuthorListFilters) -> Select: ...
     @staticmethod
     def _apply_sorting(query: Select, sorting: AuthorListSorting) -> Select: ...
-    async def _validate_author_unique(self, ...) -> None: ...
+    async def _validate_author_unique(
+        self, creation: AuthorCreate, *, exclude_author_id: int | None = None
+    ) -> None: ...
 ```
 
 ## Early Returns
@@ -250,7 +254,7 @@ These mean you are about to violate a rule above. Stop and apply the named rule:
 | About to… | Rule to apply |
 |---|---|
 | Type `Any` because "the type is complex" | Type Hints — find the real type |
-| Type `object` anywhere | Type Hints — use a protocol or generic |
+| Type `object` anywhere but `__eq__(self, other: object)` | Type Hints — use a protocol or generic |
 | Create `utils.py` / `helpers.py` / `common.py` | No Utils Modules |
 | Use `dict[str, Any]` for a known shape | Model-First Data |
 | Pass a bare `str` where values come from a fixed set | Enumerate Known Values |

@@ -28,7 +28,6 @@ Override the agent dependency with a test agent built on `TestModel`:
 
 ```python
 from collections.abc import Callable, Iterator
-from typing import TypeVar
 
 import pytest
 from fastapi import FastAPI
@@ -36,15 +35,12 @@ from pydantic_ai import Agent
 from pydantic_ai.models import Model
 from pydantic_ai.models.test import TestModel
 
-from app.modules.catalog_assistant.agents import build_catalog_assistant_agent, get_catalog_assistant_agent
-from app.modules.catalog_assistant.schemas import CatalogAssistantDeps, CatalogAssistantResponse
+from app.domains.catalog_assistant.agents import build_catalog_assistant_agent, get_catalog_assistant_agent
+from app.domains.catalog_assistant.schemas import CatalogAssistantDeps, CatalogAssistantResponse
 from tests.dependencies import temporary_override
 
-AgentDeps = TypeVar('AgentDeps')
-AgentOutput = TypeVar('AgentOutput')
 
-
-def generate_test_agent(
+def generate_test_agent[AgentDeps, AgentOutput](
     app: FastAPI,
     dependency: Callable[..., Agent[AgentDeps, AgentOutput]],
     agent_builder: Callable[[Model], Agent[AgentDeps, AgentOutput]],
@@ -100,10 +96,10 @@ def _build_output_model_response(info: AgentInfo, response: BaseModel) -> ModelR
 Use `agent.override(model=...)` to swap the model for a single test. The `with` block restores the original model afterwards:
 
 ```python
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 from pydantic_ai import Agent
 
-from app.modules.catalog_assistant.schemas import CatalogAssistantResponse
+from app.domains.catalog_assistant.schemas import CatalogAssistantResponse
 
 
 class TestCatalogAssistantResponse:
@@ -122,4 +118,4 @@ class TestCatalogAssistantResponse:
 
 - `ALLOW_MODEL_REQUESTS = False` must be set before any agent import — otherwise agent modules with import-time side effects can still reach the provider.
 - If `build_mock_model` raises `AssertionError('Could not resolve final result tool')`, the response model's schema does not match any output tool — usually a stale mock or schema drift.
-- Set `retries=0` on agents (shown in `SKILL.md`) so failures surface immediately in tests rather than being masked by retries.
+- Keep `retries` at the library default (shown in `SKILL.md`); it budgets validation retries only, so an exception raised by `build_raising_model` surfaces on the first attempt regardless.
