@@ -45,20 +45,19 @@ class AuthorModel(Base):
     description: Mapped[str] = mapped_column(String(512))
     birthday: Mapped[date | None] = mapped_column(Date)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     books: Mapped[list['BookModel']] = relationship(
-        back_populates='author',
-        cascade='all, delete-orphan',
-        passive_deletes=True,
-        lazy='raise',
+        back_populates='author', cascade='all, delete-orphan', passive_deletes=True, lazy='raise'
     )
 ```
 
 Key rules:
 - `Mapped[]` for all columns — modern SQLAlchemy 2.0 style
-- `server_default=func.now()` for timestamps — DB generates the value
+- `DateTime(timezone=True)` with `server_default=func.now()` for timestamps — DB generates the value; a naive column hands back naive datetimes that cannot be compared with `datetime.now(UTC)`
 - Explicit `String(N)` lengths matching schema `max_length`
 - `UniqueConstraint` in `__table_args__` with descriptive `name` (Alembic needs stable names)
 - `TYPE_CHECKING` guard for forward references in relationships

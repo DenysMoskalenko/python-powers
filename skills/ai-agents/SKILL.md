@@ -76,7 +76,7 @@ def build_catalog_assistant_agent(model: Model) -> Agent[CatalogAssistantDeps, C
         model=model,
         output_type=CatalogAssistantResponse,
         deps_type=CatalogAssistantDeps,
-        system_prompt=CATALOG_ASSISTANT_SYSTEM_PROMPT,
+        instructions=CATALOG_ASSISTANT_SYSTEM_PROMPT,
         retries=0,
         model_settings=ModelSettings(max_tokens=4096, thinking='low'),
     )
@@ -142,7 +142,7 @@ Rules:
 """.strip()
 ```
 
-Rules outperform descriptions ("Use X for Y" beats "You can use X").
+Rules outperform descriptions ("Use X for Y" beats "You can use X"). Pass it as `instructions=`, not `system_prompt=`: system prompt parts are stored in the message history, so a run given `message_history` reuses the stored prompt and ignores the current one; instructions are sent every run.
 
 ## Model registry
 
