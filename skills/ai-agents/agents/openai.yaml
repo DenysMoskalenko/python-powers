@@ -1,0 +1,3 @@
+interface:
+  display_name: "AI Agents"
+  short_description: "pydantic-ai agents in FastAPI: tools, registry, tests"

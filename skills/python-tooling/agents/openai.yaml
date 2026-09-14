@@ -1,0 +1,3 @@
+interface:
+  display_name: "Python Tooling"
+  short_description: "uv, ruff, ty, complexipy, pytest, prek hooks, and CI baseline"

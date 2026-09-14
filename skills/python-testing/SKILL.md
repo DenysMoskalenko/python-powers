@@ -1,13 +1,13 @@
 ---
 name: python-testing
-description: Use when writing, reviewing, or planning tests for a FastAPI service, or stabilizing flaky tests — API-level test philosophy, polyfactory data generation, test organization, helper patterns, assertion patterns, FastAPI dependency overrides, and coverage requirements. For PostgreSQL container/fixture setup see `postgres-database`; for pydantic-ai test mocking see `ai-agents`.
+description: Use when writing, reviewing, or planning tests for a FastAPI service, stabilizing flaky tests, or editing `conftest.py` — API-level test philosophy over `httpx2.AsyncClient`, polyfactory data generation, test organization, helper patterns, assertion patterns, FastAPI dependency overrides, and coverage requirements. For PostgreSQL container and session fixtures see `postgres-database`; for pydantic-ai test mocking (`TestModel`, `FunctionModel`) see `ai-agents`.
 ---
 
 # Python FastAPI Testing Patterns
 
 Testing patterns for FastAPI services. Scoped to HTTP/API testing, shared test fixtures, and FastAPI dependency overrides. Technology-specific infrastructure (database isolation, AI agent mocking) lives in dedicated skills.
 
-> Requires Python 3.13+, pytest, pytest-asyncio, polyfactory, httpx.
+> Requires Python 3.13+, pytest, pytest-asyncio, polyfactory, httpx2 (`from httpx2 import ASGITransport, AsyncClient`; the `httpx` module name is not installed).
 > Examples use `app/` as the top-level package. Substitute your package name if different.
 
 **Related**: `python-code-style`, `python-tooling`, `postgres-database`, `ai-agents`, `project-scaffolding`.
@@ -40,7 +40,7 @@ class AuthorCreateFactory(ModelFactory[AuthorCreate]):
 - `__check_model__ = False` — skip model validation at factory class definition
 - `Use(lambda: ...)` with faker — produce realistic domain values instead of random strings
 - One factory per `*Create` schema, all in `tests/factories.py`
-- Build instances: `AuthorCreateFactory.build()` or with `factory_use_construct=False` when validators must run
+- Build instances: `AuthorCreateFactory.build()` — pydantic validators run by default (`factory_use_construct=False`); pass `factory_use_construct=True` only when a test needs an object that skips them
 
 ## Test Organization
 
@@ -94,7 +94,7 @@ class AuthorCreateOverrides(TypedDict, total=False):
 
 
 async def create_test_author(session: AsyncSession, **overrides: Unpack[AuthorCreateOverrides]) -> Author:
-    payload = AuthorCreateFactory.build(factory_use_construct=False, **overrides)
+    payload = AuthorCreateFactory.build(**overrides)
     author = await AuthorService(session).create_author(payload)
     return author
 ```
@@ -175,6 +175,13 @@ def override_dependency(app: FastAPI, dependency: Callable, override: Callable) 
     for route in app.router.routes:
         if isinstance(route, Mount) and isinstance(route.app, FastAPI):
             route.app.dependency_overrides[dependency] = override
+
+
+def _remove_override(app: FastAPI, dependency: Callable) -> None:
+    app.dependency_overrides.pop(dependency, None)
+    for route in app.router.routes:
+        if isinstance(route, Mount) and isinstance(route.app, FastAPI):
+            route.app.dependency_overrides.pop(dependency, None)
 
 
 @contextmanager
@@ -263,7 +270,7 @@ These mean the test strategy is wrong. Stop and reconsider:
 
 ## Gotchas
 
-- `factory_use_construct=False` is needed when you want pydantic validators to run on factory-built objects
+- `factory_use_construct` defaults to `False`, so `.build()` already runs pydantic validators; `factory_use_construct=True` skips them
 - The default `get_session` override raises a sentinel if the `session` fixture wasn't loaded — this catches missing fixture bugs early
 - Session-scoped `app` and `client` fixtures mean the FastAPI app is created once and shared across all tests
 - `model_dump(mode='json')` is required for proper serialization of dates, UUIDs, and enums in test assertions

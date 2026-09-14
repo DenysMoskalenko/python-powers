@@ -22,14 +22,14 @@ Before adding prose, ask:
 
 ## Progressive disclosure
 
-Keep `SKILL.md` as the trigger, workflow, and navigation surface. Move bulky material to `reference/` when it is over about 100 lines, used only in some tasks, or mostly examples/API detail.
+Keep `SKILL.md` as the trigger, workflow, and navigation surface. Move bulky material to `references/` when it is over about 100 lines, used only in some tasks, or mostly examples/API detail.
 
 Rules:
 
 - Link every reference file directly from `SKILL.md`; nested references are easy to miss.
 - Keep each reference topic cohesive: providers, testing, migrations, examples, policies.
-- Do not duplicate the same rule in `SKILL.md` and `reference/`; pick one source of truth.
-- For long reference files, add a short contents list near the top.
+- Do not duplicate the same rule in `SKILL.md` and `references/`; pick one source of truth.
+- For reference files over 100 lines, add a contents list near the top.
 
 ## Description quality
 
@@ -65,7 +65,7 @@ Use a workflow only when skipping or reordering steps would likely break the out
 - Verification step
 - Failure recovery path
 
-For skill changes, use the local RED-GREEN-REFACTOR loop in `SKILL.md`: scenario first, minimal rule change, then re-check scenarios and line budget.
+For skill changes, use the local RED-GREEN-REFACTOR loop in `SKILL.md`: capture the failure first, minimal rule change, then re-check the budgets and run the checks before handing off.
 
 ## File hygiene
 

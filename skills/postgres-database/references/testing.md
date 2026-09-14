@@ -20,13 +20,13 @@ import os
 from collections.abc import Generator
 
 import pytest
-from testcontainers.postgres import PostgresContainer
+from testcontainers.community.postgres import PostgresContainer
 
 
 @pytest.fixture(scope='session', autouse=True)
 def _postgres_container() -> Generator[PostgresContainer, None, None]:
     with PostgresContainer(
-        image='postgres:18-alpine', username='test', password='test', dbname='TestDB',
+        image='postgres:18-alpine', username='test', password='test', dbname='TestDB',  # noqa: S106
     ) as postgres:
         host = postgres.get_container_host_ip()
         port = postgres.get_exposed_port(5432)
@@ -76,6 +76,8 @@ from collections.abc import AsyncIterable
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tests.dependencies import temporary_override
+
 
 @pytest.fixture(scope='function')
 async def session(app: FastAPI, _engine: AsyncEngine) -> AsyncIterable[AsyncSession]:
@@ -89,17 +91,16 @@ async def session(app: FastAPI, _engine: AsyncEngine) -> AsyncIterable[AsyncSess
     )
     session = session_factory()
 
-    override_dependency(app, get_session, lambda: session)
-
     try:
-        yield session
+        with temporary_override(app, get_session, lambda: session):
+            yield session
     finally:
         await session.close()
         await trans.rollback()
         await connection.close()
 ```
 
-The `session` fixture overrides `get_session` so the app uses the test session. After the test, the transaction rolls back and the database is clean.
+The `session` fixture overrides `get_session` so the app uses the test session. After the test, the transaction rolls back and the database is clean. `temporary_override` (`tests/dependencies.py`, see `python-testing`) restores the previous override on exit, so a later test without `session` hits the sentinel instead of this closed session.
 
 `join_transaction_mode='create_savepoint'` keeps the external transaction isolated even if application code calls `session.commit()`.
 

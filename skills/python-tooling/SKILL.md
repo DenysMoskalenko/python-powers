@@ -1,6 +1,6 @@
 ---
 name: python-tooling
-description: Use when bootstrapping or changing Python development tooling — uv dependency management, adding or removing dependencies, ruff formatting/linting, ty type checking, pytest configuration in `pyproject.toml`, pre-commit hooks, optional Makefile wrappers, or CI quality jobs.
+description: Use when bootstrapping or changing Python tooling in `pyproject.toml` or `.pre-commit-config.yaml`, or deciding what to run after a code change — uv dependency management, ruff formatting/linting, ty type checking, complexipy, pytest and pytest-asyncio settings, the coverage gate, prek hooks, optional Makefile wrappers, CI quality jobs, and `DeprecationWarning` / `filterwarnings` policy.
 ---
 
 # Python Tooling
@@ -14,7 +14,7 @@ Recommended baseline for modern Python projects. Prefer `pyproject.toml` for too
 For code style rules use `python-code-style`. For test layout and helpers use `python-testing`.
 
 For first-time project setup, full `pyproject.toml` tool snippets, and the baseline
-`.pre-commit-config.yaml`, load `reference/setup.md`.
+`.pre-commit-config.yaml`, load `references/setup.md`.
 
 ## uv — Dependency Management
 
@@ -50,7 +50,7 @@ Baseline choices:
 - **Tests ignore S101** (assert) and **ARG** (unused arguments) — these are normal in test code
 - **isort integrated** — import sorting handled by ruff, no separate isort config needed
 
-Load `reference/setup.md` when creating or changing the full ruff configuration.
+Load `references/setup.md` when creating or changing the full ruff configuration.
 
 ### Usage
 
@@ -78,7 +78,7 @@ make typecheck
 uv run ty check
 ```
 
-Load `reference/setup.md` when creating or changing the full ty configuration.
+Load `references/setup.md` when creating or changing the full ty configuration.
 
 ## pytest — Test Configuration
 
@@ -87,9 +87,9 @@ spot failures quickly.
 
 - Use `asyncio_mode = auto` so async tests run without `@pytest.mark.asyncio`
 - Use `addopts = -ra` for compact extra summaries of skipped, xfailed, and failed tests
-- Add `asyncio_default_fixture_loop_scope = "session"` only when you actually use session-scoped async fixtures
+- Add `asyncio_default_fixture_loop_scope = "session"` and `asyncio_default_test_loop_scope = "session"` only when you actually use session-scoped async fixtures — the fixture setting alone leaves function-scoped tests on a different event loop than the fixtures
 - Add targeted `filterwarnings` entries only for third-party warnings you intentionally suppress
-- Load `reference/setup.md` when creating or changing the baseline pytest configuration
+- Load `references/setup.md` when creating or changing the baseline pytest configuration
 
 ## Zero Warnings Policy
 
@@ -118,9 +118,11 @@ The rule: a clean output is a feature. If you cannot make it clean, explain why,
 
 ## pre-commit
 
-Pre-commit should run project tools from the project's uv environment. Keep ruff and ty
-as `repo: local` hooks using `uv run`; do not use `astral-sh/ruff-pre-commit` for the
-baseline. Load `reference/setup.md` for the full `.pre-commit-config.yaml` snippet.
+The hook runner is `prek` (`uv run prek install`, `uv run prek run --all-files`), not the
+`pre-commit` package; it reads the same `.pre-commit-config.yaml`. Hooks should run project
+tools from the project's uv environment. Keep ruff and ty as `repo: local` hooks using
+`uv run`; do not use `astral-sh/ruff-pre-commit` for the baseline. Load `references/setup.md`
+for the full `.pre-commit-config.yaml` snippet.
 
 ## Optional Makefile Workflow
 
@@ -131,9 +133,10 @@ If the project uses `make`, make it the single entry point for common quality wo
 | `make lint` | Format + lint with auto-fix |
 | `make lint-no-format` | Lint only (CI) |
 | `make typecheck` | Type check with ty |
+| `make complexitycheck` | Cognitive complexity check with complexipy |
 | `make test` | Run pytest |
 | `make test-coverage` | Tests with 90% coverage gate |
-| `make check` | lint + typecheck + test-coverage (full quality gate) |
+| `make check` | lint + typecheck + complexitycheck + test-coverage (full quality gate) |
 
 ### Workflow Rules
 
@@ -149,7 +152,7 @@ A minimal CI pipeline usually runs:
 1. **Lint job**: `ruff check` (no format — CI checks, doesn't fix) + `ty check`
 2. **Test job**: `pytest` (after lint passes)
 
-CI does not need `ruff format` if formatting is enforced locally via pre-commit and the developer workflow. The CI lint job should use the direct commands or their wrapper equivalents.
+CI does not need `ruff format` if formatting is enforced locally via the prek hooks and the developer workflow. The CI lint job should use the direct commands or their wrapper equivalents.
 
 ## Gotchas
 
