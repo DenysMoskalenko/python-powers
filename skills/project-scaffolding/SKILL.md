@@ -35,6 +35,8 @@ Infer every other input from the conversation too. When a value genuinely forks 
 | Input | Baseline | Override when… |
 |---|---|---|
 | `python_version` | `3.13` | the user pins an older runtime |
+| `project_description` | one line describing the service, taken from the conversation | — |
+| `author_name`, `author_email` | `git config user.name` / `user.email` | unset — keep the template placeholder and tell the user to fix it |
 | `use_github_actions` | `yes` | the user says no CI / hosts elsewhere |
 | `initialize_git` | `yes` | the user asks to skip it (e.g. a nested service folder that must not own its own `.git`) |
 | `use_otel_observability` | `no` | the user mentions tracing, metrics, or observability |
@@ -56,6 +58,9 @@ uv tool run cookiecutter https://github.com/DenysMoskalenko/BoilerplateBuilder \
   --checkout 492fc9b1e752a761e6a65182626502b8569e8143 \
   --no-input \
   project_name="Books" \
+  project_description="Catalog API for books" \
+  author_name="Ada Lovelace" \
+  author_email="ada@example.com" \
   project_type=fastapi_db \
   python_version=3.13
 ```
