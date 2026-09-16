@@ -22,6 +22,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    PROJECT_NAME: str = 'my-service'
+    PROJECT_VERSION: str = '0.1.0'
     DATABASE_URL: PostgresDsn
     OPENAI_API_KEY: SecretStr
 
@@ -44,9 +46,9 @@ def get_settings() -> Settings:
 ```python
 from fastapi import APIRouter
 
-from app.modules.authors.routes import router as authors_router
-from app.modules.books.routes import router as books_router
-from app.modules.health_checks.routes import router as health_checks_router
+from app.domains.authors.routes import router as authors_router
+from app.domains.books.routes import router as books_router
+from app.domains.health_checks.routes import router as health_checks_router
 
 
 def create_router() -> APIRouter:
@@ -62,7 +64,7 @@ def create_router() -> APIRouter:
 
 ## App Factory
 
-`create_app()` mounts the aggregated router, then registers exception handlers **last** so they wrap all middleware and routers:
+`create_app()` mounts the aggregated router and registers exception handlers (their order relative to routers and middleware does not matter):
 
 ```python
 def create_app() -> FastAPI:

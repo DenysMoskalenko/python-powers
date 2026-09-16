@@ -1,0 +1,3 @@
+interface:
+  display_name: "Project Scaffolding"
+  short_description: "Generate a greenfield FastAPI HTTP service from the template"

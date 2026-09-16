@@ -7,7 +7,7 @@ This repository is the shared AI-assisted engineering playbook.
 The main artifact is the `skills/` tree:
 
 - `python-code-style` - Python 3.13+ architecture and style rules
-- `python-tooling` - uv, ruff, ty, pytest, pre-commit, and CI patterns
+- `python-tooling` - uv, ruff, ty, pytest, prek hooks, and CI patterns
 - `python-testing` - FastAPI testing patterns and fixtures
 - `fastapi-service` - FastAPI route, service, schema, config, and exception patterns
 - `postgres-database` - SQLAlchemy, PostgreSQL, Alembic, and database test patterns
@@ -32,7 +32,7 @@ Before changing files:
 5. Do not invent CI, release steps, review rules, commands, or acceptance criteria that do
    not exist in this repository.
 6. If you change a skill, read `.claude/skills/skill-writer/SKILL.md` first and follow its
-   folder layout, frontmatter, body structure, ownership, and evaluation rules.
+   folder layout, frontmatter, body structure, ownership, and hand-off checks.
 
 ## What Belongs Here
 
@@ -57,24 +57,25 @@ Do not add:
 
 When editing `skills/<name>/SKILL.md`:
 
-- Use the `skill-writer` rules for frontmatter, structure, examples, and line budget.
+- Use the `skill-writer` rules for frontmatter, structure, examples, and budgets.
 - Keep ownership clean. Do not restate Python style rules inside framework skills, do not
   put FastAPI route rules in the database skill, and do not put pydantic-ai provider
   rules in generic testing docs.
 - Prefer one excellent example over several mediocre examples.
 - Preserve comments and deliberately worded warnings unless the change makes them
   irrelevant.
-- Update `.claude/skills/skill-writer/reference/evaluation-scenarios.md` when a behavior change
-  changes what a good agent response should do.
 
 When adding a new skill:
 
 - First confirm it has at least three distinct, recurring triggers.
 - Prefer extending an existing skill if the topic is narrow or owned by a sibling skill.
-- Add a folder at `skills/<kebab-name>/SKILL.md`; use `reference/` only for supporting
+- Add a folder at `skills/<kebab-name>/SKILL.md`; use `references/` only for supporting
   material that would otherwise make the main file too long.
 - Update related-skill cross-references where they materially help discovery.
-- Inspect plugin manifests (`.codex-plugin/plugin.json`, `.cursor-plugin/plugin.json`)
+- Add `skills/<name>/agents/openai.yaml` with `interface.display_name` and
+  `interface.short_description`; Codex reads it.
+- Inspect the plugin manifests (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`,
+  `.codex-plugin/plugin.json`, `.cursor-plugin/plugin.json`, `.agents/plugins/marketplace.json`)
   and update their discoverability metadata when the skill changes the plugin's advertised
   scope. Keep `skills` paths valid, update `keywords`, Cursor `tags`, summaries, and
   starter prompts only when they should help users find or understand the plugin.
@@ -87,7 +88,10 @@ For every change:
 
 - Re-read the complete changed section after editing.
 - Verify links and local paths you touched exist.
-- Check frontmatter manually for valid YAML when touching a `SKILL.md`.
+- When touching a `SKILL.md` or a reference file, run the checks `skill-writer` lists
+  before handing off (frontmatter parses, fences tagged, paths exist, budgets).
+- Run `claude plugin validate .` when touching a manifest; it validates only
+  `.claude-plugin/marketplace.json`.
 - Report exactly what you changed and what you verified.
 
 For Python examples inside skills:

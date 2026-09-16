@@ -40,5 +40,6 @@
     "ai-agents",
     "scaffolding"
   ],
-  "skills": "./skills/"
+  "skills": "./skills/",
+  "logo": "./assets/python-powers-logo.png"
 }
