@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Skill Writer (This Repository Only)
 
-Meta-skill for authoring skills in this repository's `skills/` folder. Captures the house style so future edits reproduce the existing look, scope, and quality without re-deriving conventions.
+Meta-skill for authoring skills in this repository's `skills/` folder. Captures the house style so future edits reproduce the existing look, scope, and quality without re-deriving conventions. It lives in `.claude/skills/`, so Claude Code loads it only inside this checkout and no plugin manifest ships it; it is explicit-only (`disable-model-invocation: true`), and `AGENTS.md` step 6 tells agents to read it by path before changing a skill. The layout, `agents/openai.yaml`, and manifest rules below apply to the packaged skills under `skills/`, not to this file.
 
 > Scope: applies ONLY to `skills/<name>/SKILL.md` inside this repository.
 > For other skill systems (`~/.cursor/skills/`, `~/.codex/skills/`, obra superpowers, etc.), refuse and point the user to that system's own authoring skill.

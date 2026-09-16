@@ -17,7 +17,6 @@ The main artifact is the [`skills/`](skills/) directory. Each skill is a focused
 | [`postgres-database`](skills/postgres-database/SKILL.md) | PostgreSQL, SQLAlchemy 2.0 async, Alembic migrations, service-owned queries, and testcontainers-backed database tests. |
 | [`ai-agents`](skills/ai-agents/SKILL.md) | pydantic-ai agents in FastAPI services, typed dependencies, tools, model registry patterns, provider mapping, and tests. |
 | [`project-scaffolding`](skills/project-scaffolding/SKILL.md) | Generating a brand-new FastAPI service from the BoilerplateBuilder template with tests, linters, CI, and Docker working from the first commit. Greenfield only. |
-| [`skill-writer`](skills/skill-writer/SKILL.md) | House rules for adding, editing, splitting, or reviewing skills in this repository. |
 
 Some skills include additional reference material linked from their main guide.
 
@@ -39,7 +38,7 @@ Typical combinations:
 | Build a FastAPI endpoint backed by PostgreSQL | `python-code-style`, `fastapi-service`, `postgres-database`, `python-testing` |
 | Add an AI assistant endpoint to a service | `python-code-style`, `fastapi-service`, `ai-agents`, `python-testing` |
 | Change linting, typing, dependencies, or test commands | `python-tooling` |
-| Edit one of this repository's skills | `skill-writer` plus the skill being changed |
+| Edit one of this repository's skills | [`.claude/skills/skill-writer`](.claude/skills/skill-writer/SKILL.md) (repo-local, not shipped) plus the skill being changed |
 
 ## Install As A Claude Code Plugin
 
@@ -120,7 +119,7 @@ Changes should improve shared, reusable Python engineering guidance. Good contri
 
 Avoid adding app-specific conventions, one-off team workflows, unproven tool recommendations, or claims about CI and release processes that are not represented in this repository.
 
-When changing a skill, read [`skills/skill-writer/SKILL.md`](skills/skill-writer/SKILL.md) first and keep the edit scoped to that skill's ownership.
+When changing a skill, read [`.claude/skills/skill-writer/SKILL.md`](.claude/skills/skill-writer/SKILL.md) first and keep the edit scoped to that skill's ownership. That skill is a repo-local Claude Code skill for contributors and is not part of the published plugin.
 
 ## License
 

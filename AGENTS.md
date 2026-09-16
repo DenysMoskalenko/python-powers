@@ -13,7 +13,10 @@ The main artifact is the `skills/` tree:
 - `postgres-database` - SQLAlchemy, PostgreSQL, Alembic, and database test patterns
 - `ai-agents` - pydantic-ai agent structure, providers, tools, routes, and tests
 - `project-scaffolding` - greenfield project generation from the BoilerplateBuilder template (new services only)
-- `skill-writer` - house rules for creating and editing skills in this repo
+
+The house rules for authoring those skills live in `.claude/skills/skill-writer/SKILL.md`.
+It is a repo-local Claude Code skill (`/skill-writer` inside this checkout), not part of the
+published plugin: every plugin manifest points at `skills/`, so nothing under `.claude/` ships.
 
 ## If You Are an AI Agent
 
@@ -28,7 +31,7 @@ Before changing files:
 4. Keep the change scoped to this repository's docs or skill content.
 5. Do not invent CI, release steps, review rules, commands, or acceptance criteria that do
    not exist in this repository.
-6. If you change a skill, read `skills/skill-writer/SKILL.md` first and follow its
+6. If you change a skill, read `.claude/skills/skill-writer/SKILL.md` first and follow its
    folder layout, frontmatter, body structure, ownership, and evaluation rules.
 
 ## What Belongs Here
@@ -61,7 +64,7 @@ When editing `skills/<name>/SKILL.md`:
 - Prefer one excellent example over several mediocre examples.
 - Preserve comments and deliberately worded warnings unless the change makes them
   irrelevant.
-- Update `skills/skill-writer/reference/evaluation-scenarios.md` when a behavior change
+- Update `.claude/skills/skill-writer/reference/evaluation-scenarios.md` when a behavior change
   changes what a good agent response should do.
 
 When adding a new skill:
