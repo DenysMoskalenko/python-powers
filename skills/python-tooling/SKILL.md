@@ -66,7 +66,7 @@ uv run ruff format .
 uv run ruff check --fix .
 ```
 
-**Always run the formatter+linter after changing any Python file.** If the repo exposes `make lint`, use it. Otherwise run the equivalent `uv run ruff ...` commands directly.
+**Always run the formatter+linter after changing any Python file** — on the files you changed: `uv run ruff format <paths>` and `uv run ruff check --fix <paths>`. `make lint` reformats the whole project, so use it only when the repository is already clean or the task is the cleanup.
 
 ## ty — Type Checking
 
@@ -140,7 +140,7 @@ If the project uses `make`, make it the single entry point for common quality wo
 
 ### Workflow Rules
 
-1. **After every Python code change**: run the formatter+linter pair (`make lint` or equivalent direct commands)
+1. **After every Python code change**: run the formatter+linter pair on the changed files (`uv run ruff format <paths>` and `uv run ruff check --fix <paths>`; `make lint` only when the repository is already clean)
 2. **Before opening a PR**: run the full local quality gate (`make check` or the equivalent direct command sequence)
 3. **If the repo defines wrappers**: keep wrapper names boring and obvious (`lint`, `typecheck`, `test`, `check`)
 4. **If the repo does not define wrappers**: document the direct `uv run ...` commands instead of adding `make` just for habit
@@ -149,10 +149,10 @@ If the project uses `make`, make it the single entry point for common quality wo
 
 A minimal CI pipeline usually runs:
 
-1. **Lint job**: `ruff check` (no format — CI checks, doesn't fix) + `ty check`
+1. **Lint job**: `ruff format --check` + `ruff check` (CI checks, doesn't fix) + `ty check` + `complexipy`
 2. **Test job**: `pytest` (after lint passes)
 
-CI does not need `ruff format` if formatting is enforced locally via the prek hooks and the developer workflow. The CI lint job should use the direct commands or their wrapper equivalents.
+CI checks formatting even though hooks format locally: a hook can be skipped with `--no-verify` or never installed in a clone. The CI lint job should use the direct commands or their wrapper equivalents.
 
 ## Gotchas
 
