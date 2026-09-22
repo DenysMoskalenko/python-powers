@@ -1,6 +1,6 @@
 ---
 name: project-scaffolding
-description: Use when starting a brand-new FastAPI service from zero — "create a FastAPI app/API/microservice that…", bootstrapping a fresh repo that needs tests, linters, CI, and Docker working from the first commit. Greenfield HTTP services only — not for CLIs, libraries, or adding features to an existing project. For tooling changes in an existing repo see `python-tooling`.
+description: Use when starting a brand-new FastAPI service from zero — "create a FastAPI app/API/microservice that…", bootstrapping a fresh repo that needs tests, linters, CI, and Docker working from the first commit. Greenfield services only — not for CLIs, libraries, or adding features to an existing project. For tooling changes in an existing repo see `python-tooling`.
 ---
 
 # Project Scaffolding (Greenfield Only)

@@ -16,7 +16,7 @@ Rules for writing production-quality Python. Every rule here reflects a delibera
 
 Type every public function, method, and class attribute. Types are documentation that the toolchain can verify.
 
-**Modern syntax only** (Python 3.13+) — use builtin generics (`list[int]`, `dict[str, int]`, `tuple[int, ...]`) and union syntax (`str | None`, `str | int`). Never import `List`, `Dict`, `Optional`, `Union`, `Tuple` from `typing`. Use `typing` only for types that have no builtin equivalent: `Annotated`, `Literal`, `Protocol`, `TypedDict`, `Unpack`, `TYPE_CHECKING`; `Generator` and `AsyncGenerator` come from `collections.abc`. Declare aliases and generics with PEP 695 syntax (`type SortingOrder = Literal['asc', 'desc']`, `def first[ItemT](items: Sequence[ItemT]) -> ItemT | None`), not `TypeAlias` (deprecated since 3.12) or a module-level `TypeVar` — ruff rewrites both.
+**Modern syntax only** (Python 3.13+) — use builtin generics (`list[int]`, `dict[str, int]`, `tuple[int, ...]`) and union syntax (`str | None`, `str | int`). Never import `List`, `Dict`, `Optional`, `Union`, `Tuple` from `typing`. Use `typing` only for types that have no builtin equivalent: `Annotated`, `Literal`, `NoReturn`, `Protocol`, `TypedDict`, `Unpack`, `TYPE_CHECKING`; `Generator` and `AsyncGenerator` come from `collections.abc`. Declare aliases and generics with PEP 695 syntax (`type SortingOrder = Literal['asc', 'desc']`, `def first[ItemT](items: Sequence[ItemT]) -> ItemT | None`), not `TypeAlias` (deprecated since 3.12) or a module-level `TypeVar`.
 
 **Never use `Any`** unless the value is genuinely unconstrained. If you reach for `Any` because you don't know the type, stop and find it. `Any` disables type checking for everything it touches.
 

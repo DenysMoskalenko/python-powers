@@ -118,4 +118,4 @@ class TestCatalogAssistantResponse:
 
 - `ALLOW_MODEL_REQUESTS = False` must be set before any agent import — otherwise agent modules with import-time side effects can still reach the provider.
 - If `build_mock_model` raises `AssertionError('Could not resolve final result tool')`, the response model's schema does not match any output tool — usually a stale mock or schema drift.
-- Keep `retries` at the library default (shown in `SKILL.md`); it budgets validation retries only, so an exception raised by `build_raising_model` surfaces on the first attempt regardless.
+- Set `retries=0` on agents (shown in `SKILL.md`) so failures surface immediately in tests rather than being masked by retries.

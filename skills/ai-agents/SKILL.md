@@ -1,6 +1,6 @@
 ---
 name: ai-agents
-description: Use when adding an LLM, assistant, or chatbot endpoint to a FastAPI service, or when building, integrating, or testing pydantic-ai agents — the Agent, system prompts, typed deps, tools, model registry, agent-as-FastAPI-dependency wiring, ModelHTTPError mapping, and agent test fixtures (TestModel, FunctionModel, provider error mapping).
+description: Use when adding an LLM, assistant, or chatbot endpoint to a FastAPI service, or when building, integrating, or testing pydantic-ai agents — the Agent, system prompts, typed deps, tools, model registry, agent-as-FastAPI-dependency wiring, and agent test fixtures (TestModel, FunctionModel, ModelHTTPError / provider error mapping).
 ---
 
 # AI Agent Patterns
@@ -77,7 +77,8 @@ def build_catalog_assistant_agent(model: Model) -> Agent[CatalogAssistantDeps, C
         output_type=CatalogAssistantResponse,
         deps_type=CatalogAssistantDeps,
         system_prompt=CATALOG_ASSISTANT_SYSTEM_PROMPT,
-        model_settings=ModelSettings(max_tokens=2048, thinking='low'),
+        retries=0,
+        model_settings=ModelSettings(max_tokens=4096, thinking='low'),
     )
 
     @agent.tool
@@ -103,8 +104,8 @@ Key patterns:
 - Tools registered with `@agent.tool` inside the builder — each tool gets `RunContext[Deps]`
 - Tool inputs are Pydantic `BaseModel` subclasses — the LLM sees their JSON schema
 - Tools call services from `ctx.deps`, never import globals
-- `retries` stays at the library default (1): it budgets tool-argument and output validation retries, never provider errors; `retries=0` turns one malformed tool call into a failure
-- No `temperature` with `thinking`: OpenAI ignores sampling settings once reasoning is on
+- `retries=0` to fail fast; `retries` budgets tool-argument and output validation retries (never provider errors), and a retry hides a malformed call
+- No `temperature` with `thinking` (OpenAI drops it with a warning, Anthropic models reject it); keep `max_tokens` above the thinking budget (`'low'` is 2,048 tokens on Anthropic models)
 
 ## Tool input schemas
 
@@ -212,8 +213,7 @@ A thin service that calls `agent.run()` with the assembled deps:
 from typing import Annotated
 
 from fastapi import Depends
-from pydantic_ai import Agent
-from pydantic_ai.usage import UsageLimits
+from pydantic_ai import Agent, UsageLimits
 
 from app.domains.catalog.service import CatalogService
 from app.domains.catalog_assistant.schemas import (
@@ -287,7 +287,7 @@ These mean the agent boundary is drifting. Stop and apply the named rule:
 |---|---|
 | Import a service directly inside an agent tool | Agent dependencies — tools use `ctx.deps` only |
 | Write a system prompt as "You can use..." | System prompts — write rules as "Use X for Y" |
-| Set `retries=0` on the agent | Agent factory — keep the library default; `retries` budgets validation retries, not provider errors |
+| Set `retries > 0` on the agent | Agent factory — use `retries=0` so failures surface |
 | Instantiate provider models inside the model registry | Model registry — delegate provider wiring to `infrastructure/llms/` |
 | Let tests run without `ALLOW_MODEL_REQUESTS = False` | Testing — block real model requests globally |
 | Resolve output tools in mocks by list index | Testing — resolve output tools by schema keys |

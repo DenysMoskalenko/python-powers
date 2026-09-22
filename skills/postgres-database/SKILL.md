@@ -109,7 +109,7 @@ class AuthorModel(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=func.uuidv7())
 ```
 
-If your PostgreSQL exposes native `uuidv7()` (PG 18+ or the `pg_uuidv7` extension), prefer generating it in the database via `server_default`; otherwise generate in Python with `uuid.uuid7()` (stdlib since Python 3.14).
+If your PostgreSQL exposes native `uuidv7()` (PG 18+; the `pg_uuidv7` extension names it `uuid_generate_v7()`), prefer generating it in the database via `server_default`; otherwise generate in Python with `uuid.uuid7()` (stdlib since Python 3.14).
 
 ## Usage
 
@@ -136,11 +136,7 @@ class AuthorService:
 
     async def create_author(self, creation: AuthorCreate) -> Author:
         await self._validate_author_unique(creation)
-        query = (
-            insert(AuthorModel)
-            .values(first_name=creation.first_name, last_name=creation.last_name)
-            .returning(AuthorModel)
-        )
+        query = insert(AuthorModel).values(**creation.model_dump()).returning(AuthorModel)
         author = await self._session.scalar(query)
         return Author.model_validate(author)
 

@@ -18,7 +18,7 @@ from pydantic_ai.models.bedrock import BedrockConverseModel, BedrockModelSetting
 
 
 def _get_model_settings(model: Model) -> ModelSettings:
-    settings = ModelSettings(max_tokens=2048, thinking='low')
+    settings = ModelSettings(max_tokens=4096, thinking='low')
     if isinstance(model, BedrockConverseModel):
         return BedrockModelSettings(**settings, bedrock_cache_instructions=True)
     return settings
@@ -28,7 +28,7 @@ Pattern: always build the base `ModelSettings` first, then conditionally upgrade
 
 ## Provider error mapping tests
 
-pydantic-ai normalizes provider failures before they reach your code: an HTTP error becomes `ModelHTTPError` (`status_code`, `model_name`, `body`), anything else its base class `ModelAPIError` — so `openai.RateLimitError` or Bedrock's `ClientError` never reach an exception handler (Bedrock wraps only `ClientError`; a `botocore.exceptions.BotoCoreError` such as a read timeout propagates unwrapped and needs its own handler). Test that the normalized exceptions map to the correct HTTP status codes. The pattern uses `build_raising_model()` from `references/testing.md`:
+pydantic-ai normalizes provider failures before they reach your code: an HTTP error becomes `ModelHTTPError` (`status_code`, `model_name`, `body`), anything else its base class `ModelAPIError` — so `openai.RateLimitError` or Bedrock's `ClientError` never reach an exception handler — register the handlers in `app/core/exception_handlers.py` on `ModelHTTPError` and `ModelAPIError` (Bedrock wraps only `ClientError`; a `botocore.exceptions.BotoCoreError` such as a read timeout propagates unwrapped and needs its own handler). Test that the normalized exceptions map to the correct HTTP status codes. The pattern uses `build_raising_model()` from `references/testing.md`:
 
 ```python
 from httpx2 import AsyncClient

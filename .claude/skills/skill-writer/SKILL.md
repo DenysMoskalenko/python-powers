@@ -51,7 +51,7 @@ Rules:
 - `name` — lowercase + hyphens, matches folder name
 - `description` — single-line YAML scalar, 30-55 words, well under the 1024-char ceiling
 - No `<` or `>` anywhere in the frontmatter (claude.ai uploads reject them) — write "a skill under `skills/`", not `skills/<name>/SKILL.md`
-- No colon-space inside the unquoted description: `ty: ignore` starts a YAML mapping and breaks the frontmatter — write `ty ignore[rule]`
+- No colon-space inside the unquoted description: `ty: ignore` is invalid YAML; Claude Code tolerates it, strict loaders do not — write `ty ignore[rule]`
 - Description MUST start with "Use when…" and state **triggers**, not a workflow recipe
 - Description in **third person** only ("Use when…", not "I help you…")
 - Disambiguation clause is **optional** and earns its place only when:
@@ -60,7 +60,7 @@ Rules:
   - If the skill name + topics already exclude the topic, do NOT add a "Does not cover X" line — it is dead weight paid on every skill-discovery decision
 - Avoid pairing a "Use when…" sentence with an "Apply when…" sentence that just restates the same triggers
 - No `compatibility:` field — put `> Requires ...` in the body instead
-- Allowed keys: `name`, `description`, `disable-model-invocation`, `paths`, `when_to_use`, `metadata`, plus the spec's `license` / `compatibility`
+- No other frontmatter keys except platform invocation-control keys already used in this repo, such as `disable-model-invocation`
 - `disable-model-invocation: true` (explicit-only skill) also needs `policy.allow_implicit_invocation: false` in `agents/openai.yaml`; Codex ignores the frontmatter key
 
 ### Body skeleton
@@ -197,10 +197,10 @@ Use RED-GREEN-REFACTOR for new skills and meaningful edits:
 ```bash
 claude plugin validate .                                   # .claude-plugin/marketplace.json only
 find skills/<name> -name '*.md' -exec wc -w -l {} +        # line and word budgets
-uv run --with pyyaml python -c "import sys, yaml; print(yaml.safe_load(sys.stdin.read().split('---')[1]))" < skills/<name>/SKILL.md
+uv run --with pyyaml python -c "import sys, yaml; s = sys.stdin.read(); assert s.startswith('---\n'), 'line 1 must be ---'; print(yaml.safe_load(s[4:s.index('\n---', 3)]))" < skills/<name>/SKILL.md
 ```
 
-The third command prints the parsed frontmatter, or the YAML error. Then confirm by reading: only allowed keys, every fence with a language tag, every path named in prose exists, every `references/*.md` linked from `SKILL.md`, `agents/openai.yaml` present.
+The third command prints the parsed frontmatter, or the YAML error. Then confirm by reading: no extra frontmatter keys, every fence with a language tag, every path named in prose exists, every `references/*.md` linked from `SKILL.md`, `agents/openai.yaml` present.
 
 ## Workflow: Creating a new skill
 
@@ -291,5 +291,5 @@ The loader picks the skill from the frontmatter `description` alone; the body is
 - `description` is injected into the system prompt — if triggers are vague, the skill does not load when needed
 - `references/*.md` files are NEVER auto-loaded; the main `SKILL.md` must link to them by path
 - Changes to `python-code-style` affect every domain skill's assumptions — review all siblings after editing it
-- A frontmatter Claude Code cannot read (an unbalanced quote, a blank line before the first `---`) drops the skill from the listing without an error, so it silently stops routing; `claude plugin validate .` does not catch it — the parse command in the checks does. Claude Code tolerates `ty: ignore`; strict YAML parsers such as pyyaml do not
+- A frontmatter Claude Code cannot read (an unbalanced quote, a blank line before the first `---`) drops the skill from the listing without an error, so it silently stops routing; `claude plugin validate .` does not catch it — the parse command in the checks does
 - This skill follows its own rules. If you edit THIS skill, re-run its own Red Flags table against the diff

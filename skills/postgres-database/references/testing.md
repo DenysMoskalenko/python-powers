@@ -20,13 +20,16 @@ import os
 from collections.abc import Generator
 
 import pytest
-from testcontainers.community.postgres import PostgresContainer
+from testcontainers.postgres import PostgresContainer
 
 
 @pytest.fixture(scope='session', autouse=True)
 def _postgres_container() -> Generator[PostgresContainer, None, None]:
     with PostgresContainer(
-        image='postgres:18-alpine', username='test', password='test', dbname='TestDB',  # noqa: S106
+        image='postgres:18-alpine',
+        username='test',
+        password='test',  # noqa: S106
+        dbname='TestDB',
     ) as postgres:
         host = postgres.get_container_host_ip()
         port = postgres.get_exposed_port(5432)
