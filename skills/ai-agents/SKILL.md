@@ -105,7 +105,7 @@ Key patterns:
 - Tool inputs are Pydantic `BaseModel` subclasses — the LLM sees their JSON schema
 - Tools call services from `ctx.deps`, never import globals
 - `retries=0` to fail fast; `retries` budgets tool-argument and output validation retries (never provider errors), and a retry hides a malformed call
-- No `temperature` with `thinking` (OpenAI drops it with a warning, Anthropic models reject it); keep `max_tokens` above the thinking budget (`'low'` is 2,048 tokens on Anthropic models)
+- No `temperature` with `thinking`: depending on the model, pydantic-ai drops it with a warning or the provider rejects the request; keep `max_tokens` above a fixed thinking budget (`'low'` is 2,048 tokens on Claude Haiku 4.5)
 
 ## Tool input schemas
 
