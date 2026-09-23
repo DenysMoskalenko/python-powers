@@ -44,8 +44,8 @@ Infer every other input from the conversation too. When a value genuinely forks 
 
 These tables cover the inputs you normally set. For anything not covered here — an input you're unsure about, an allowed value, or an option-specific detail — read the template directly instead of guessing:
 
-- Inputs and their allowed values: [`cookiecutter.json`](https://github.com/DenysMoskalenko/BoilerplateBuilder/blob/492fc9b1e752a761e6a65182626502b8569e8143/cookiecutter.json)
-- What each `project_type` ships and how it runs: [the template README](https://github.com/DenysMoskalenko/BoilerplateBuilder/tree/492fc9b1e752a761e6a65182626502b8569e8143)
+- Inputs and their allowed values: `cookiecutter.json` in [the template repository](https://github.com/DenysMoskalenko/BoilerplateBuilder)
+- What each `project_type` ships and how it runs: [the template README](https://github.com/DenysMoskalenko/BoilerplateBuilder)
 
 Consulting the template is your own research — keep it invisible to the user; never surface its prompts at them (see [Red Flags](#red-flags--stop)).
 
@@ -55,7 +55,6 @@ Drive the generator non-interactively, passing only the inputs that differ from 
 
 ```bash
 uv tool run cookiecutter https://github.com/DenysMoskalenko/BoilerplateBuilder \
-  --checkout 492fc9b1e752a761e6a65182626502b8569e8143 \
   --no-input \
   project_name="Books" \
   project_description="Catalog API for books" \
@@ -65,7 +64,6 @@ uv tool run cookiecutter https://github.com/DenysMoskalenko/BoilerplateBuilder \
   python_version=3.13
 ```
 
-- `--checkout` pins the template revision this skill was verified against, so the same prompt produces the same project tomorrow; without it `main` moves. To bump it, regenerate all four project types from the new revision, run `make check` in each, then update the hash in this skill.
 - `--no-input` skips the interactive prompts and applies the template default for every key you omit.
 - **Always pass `project_type` explicitly** — the template's own default is the heaviest variant (`fastapi_db_agent`).
 - Boolean inputs take the strings `yes` / `no`.
