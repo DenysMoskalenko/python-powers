@@ -111,12 +111,12 @@ Every `SKILL.md` follows this order. Sections in **bold** are mandatory.
 
 | File | Target | Hard limit |
 |---|---|---|
-| `SKILL.md` body | ≤ 300 lines and ≤ 2,000 words (`wc -w`, code included, about 3k tokens) | 500 lines (Anthropic guide); about 5,000 tokens (Agent Skills spec) |
+| `SKILL.md` body | ≤ 300 lines and ≤ 2,000 words (`wc -w`, code included) | 500 lines (Anthropic guide); the Agent Skills spec recommends under 5,000 tokens |
 | Each topical `references/<topic>.md` | ≤ 200 lines | 300 lines |
 
 If `SKILL.md` exceeds 300 lines or 2,000 words, move the largest cohesive block (usually testing patterns or provider-specific details) into `references/<topic>.md` and leave a one-line pointer.
 
-This meta-skill is explicit-only — loaded only when named by path, never by the router — and is exempt from the word budget; it keeps the line budget.
+This meta-skill is explicit-only — loaded only via `/skill-writer` or by path, never by the router — and is exempt from the word budget; it keeps the line budget.
 
 ### Code examples
 
@@ -195,7 +195,7 @@ Use RED-GREEN-REFACTOR for new skills and meaningful edits:
 ### Checks before handing off
 
 ```bash
-claude plugin validate .                                   # .claude-plugin/marketplace.json only
+claude plugin validate .                                   # marketplace.json and the plugin.json it lists
 find skills/<name> -name '*.md' -exec wc -w -l {} +        # line and word budgets
 uv run --with pyyaml python -c "import sys, yaml; s = sys.stdin.read(); assert s.startswith('---\n'), 'line 1 must be ---'; print(yaml.safe_load(s[4:s.index('\n---', 3)]))" < skills/<name>/SKILL.md
 ```

@@ -90,8 +90,9 @@ For every change:
 - Verify links and local paths you touched exist.
 - When touching a `SKILL.md` or a reference file, run the checks `skill-writer` lists
   before handing off (frontmatter parses, fences tagged, paths exist, budgets).
-- Run `claude plugin validate .` when touching a manifest; it validates only
-  `.claude-plugin/marketplace.json`.
+- Run `claude plugin validate .` when touching a manifest; it validates
+  `.claude-plugin/marketplace.json` and the `plugin.json` it lists, not the Codex
+  or Cursor manifests.
 - Report exactly what you changed and what you verified.
 
 For Python examples inside skills:
