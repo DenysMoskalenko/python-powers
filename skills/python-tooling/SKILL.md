@@ -124,7 +124,7 @@ for the full `.pre-commit-config.yaml` snippet.
 
 ## Optional Makefile Workflow
 
-If the project uses `make`, make it the single entry point for common quality workflows. If it does not, run the equivalent `uv run ...` commands directly.
+If the project uses `make`, use its targets for whole-project workflows. If it does not, run the equivalent `uv run ...` commands directly.
 
 | Command | What it does |
 |---------|-------------|
