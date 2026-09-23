@@ -16,14 +16,15 @@ Use `pydantic-settings` with `.env` file. Cache with `lru_cache`:
 
 ```python
 from functools import lru_cache
+from importlib.metadata import version
 
-from pydantic import PostgresDsn, SecretStr
+from pydantic import Field, PostgresDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = 'my-service'
-    PROJECT_VERSION: str = '0.1.0'
+    PROJECT_VERSION: str = Field(default_factory=lambda: version('my-service'))
     DATABASE_URL: PostgresDsn
     OPENAI_API_KEY: SecretStr
 
@@ -35,6 +36,7 @@ def get_settings() -> Settings:
     return Settings()
 ```
 
+- `PROJECT_VERSION` is read from the installed package metadata, so `pyproject.toml` is the only place to bump it; this needs the project installed (a `[build-system]` table, as the template has), and an env var still overrides it
 - `frozen=True` prevents mutation
 - `SecretStr` for sensitive values — never log or expose
 - Use `dist.env` as the template, never commit `.env`
