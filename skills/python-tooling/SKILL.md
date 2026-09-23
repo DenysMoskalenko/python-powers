@@ -56,15 +56,15 @@ Load `references/setup.md` when creating or changing the full ruff configuration
 
 ```bash
 # After an edit: only the files you changed
-uv run ruff format <paths>
 uv run ruff check --fix <paths>
+uv run ruff format <paths>
 
 # Whole project: `make lint` if the project exposes Make targets, otherwise
-uv run ruff format .
 uv run ruff check --fix .
+uv run ruff format .
 ```
 
-**Always run the formatter+linter after changing any Python file**, on the files you changed. `make lint` reformats the whole project, so use it only when the repository is already clean or the task is the cleanup.
+**Always run the formatter+linter after changing any Python file**, on the files you changed. Fix before formatting: an autofix can leave code that `ruff format --check` rejects. `make lint` reformats the whole project, so use it only when the repository is already clean or the task is the cleanup.
 
 ## ty — Type Checking
 
@@ -138,7 +138,7 @@ If the project uses `make`, use its targets for whole-project workflows. If it d
 
 ### Workflow Rules
 
-1. **After every Python code change**: run the formatter+linter pair on the changed files (`uv run ruff format <paths>` and `uv run ruff check --fix <paths>`; `make lint` only when the repository is already clean)
+1. **After every Python code change**: run the formatter+linter pair on the changed files (`uv run ruff check --fix <paths>`, then `uv run ruff format <paths>`; `make lint` only when the repository is already clean)
 2. **Before opening a PR**: run the full local quality gate (`make check` or the equivalent direct command sequence); `make check` starts with `make lint`, so on a repository that is not formatter-clean run `make lint-no-format typecheck complexitycheck test-coverage` instead
 3. **If the repo defines wrappers**: keep wrapper names boring and obvious (`lint`, `typecheck`, `test`, `check`)
 4. **If the repo does not define wrappers**: document the direct `uv run ...` commands instead of adding `make` just for habit
