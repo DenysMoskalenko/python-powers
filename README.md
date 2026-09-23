@@ -11,7 +11,7 @@ The main artifact is the [`skills/`](skills/) directory. Each skill is a focused
 | Skill | Use it for |
 | --- | --- |
 | [`python-code-style`](skills/python-code-style/SKILL.md) | Python 3.13+ style, typing, naming, dependency injection, model-first data design, and general architecture rules. |
-| [`python-tooling`](skills/python-tooling/SKILL.md) | uv, ruff, ty, pytest configuration, pre-commit hooks, optional Makefile wrappers, and CI quality jobs. |
+| [`python-tooling`](skills/python-tooling/SKILL.md) | uv, ruff, ty, complexipy, pytest configuration, prek hooks, optional Makefile wrappers, and CI quality jobs. |
 | [`python-testing`](skills/python-testing/SKILL.md) | FastAPI API-level testing, pytest fixtures, polyfactory factories, dependency overrides, and assertion patterns. |
 | [`fastapi-service`](skills/fastapi-service/SKILL.md) | FastAPI routes, services, schemas, settings, exception handling, and dependency wiring without a repository layer. |
 | [`postgres-database`](skills/postgres-database/SKILL.md) | PostgreSQL, SQLAlchemy 2.0 async, Alembic migrations, service-owned queries, and testcontainers-backed database tests. |
@@ -111,7 +111,7 @@ Then restart Cursor or run `Developer: Reload Window`.
 - Prefer clear ownership over duplicated rules.
 - Use realistic examples that can be adapted into production services.
 - Keep skills terse enough for agents to load and follow.
-- Put supporting material in `reference/` when it would bloat the main skill.
+- Put supporting material in `references/` when it would bloat the main skill.
 
 ## Contributing
 

@@ -1,6 +1,6 @@
 ---
 name: postgres-database
-description: Use when working with PostgreSQL via SQLAlchemy 2.0 async and Alembic — defining models, writing service queries (CRUD, pagination, filtering), generating or debugging migrations, setting up testcontainers-based database isolation in tests, or diagnosing `MissingGreenlet`, `lazy='raise'` / `InvalidRequestError`, or N+1 query problems.
+description: Use when writing SQLAlchemy 2.0 async models, service queries (CRUD, pagination, filtering), or generating or debugging Alembic migrations (`migrations/env.py`, autogenerate) against PostgreSQL — `Mapped[]` columns, `ondelete`, `uuidv7` keys, testcontainers-based database isolation in tests, or diagnosing `MissingGreenlet`, `lazy='raise'` / `InvalidRequestError`, or N+1 query problems.
 ---
 
 # PostgreSQL Database Patterns
@@ -16,7 +16,7 @@ For HTTP routes and Pydantic schemas use `fastapi-service`. For shared test fixt
 
 ## Setup
 
-See `reference/setup.md` for the `Base` / `DeclarativeBase` with Alembic naming convention, the `lru_cache`d async engine and session factory, and the `get_session` / `open_db_session` session providers.
+See `references/setup.md` for the `Base` / `DeclarativeBase` with Alembic naming convention, the `lru_cache`d async engine and session factory, and the `get_session` / `open_db_session` session providers.
 
 ### Models
 
@@ -63,6 +63,7 @@ Key rules:
 - `UniqueConstraint` in `__table_args__` with descriptive `name` (Alembic needs stable names)
 - `TYPE_CHECKING` guard for forward references in relationships
 - Every `relationship(...)` declares `lazy='raise'` — no implicit loading; see [Loading relationships](#loading-relationships)
+- `passive_deletes=True` needs `ondelete='CASCADE'` on the child `ForeignKey` — services delete with Core `delete()`, which bypasses ORM cascades, so without the DB rule the delete raises `IntegrityError`
 
 One-to-one example (Book ↔ Cover — each book has at most one cover):
 
@@ -72,19 +73,17 @@ class BookModel(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String(256))
-    author_id: Mapped[int] = mapped_column(Integer, ForeignKey('authors.id'))
+    author_id: Mapped[int] = mapped_column(Integer, ForeignKey('authors.id', ondelete='CASCADE'))
 
-    cover: Mapped['CoverModel | None'] = relationship(
-        back_populates='book',
-        lazy='raise',
-    )
+    author: Mapped['AuthorModel'] = relationship(back_populates='books', lazy='raise')
+    cover: Mapped['CoverModel | None'] = relationship(back_populates='book', lazy='raise')
 
 
 class CoverModel(Base):
     __tablename__ = 'covers'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    book_id: Mapped[int] = mapped_column(Integer, ForeignKey('books.id'), unique=True)
+    book_id: Mapped[int] = mapped_column(Integer, ForeignKey('books.id', ondelete='CASCADE'), unique=True)
     image_url: Mapped[str] = mapped_column(String(512))
 
     book: Mapped['BookModel'] = relationship(
@@ -101,16 +100,16 @@ When you do use a UUID, prefer UUIDv7 over v4 — v7 is time-ordered, so B-tree 
 
 ```python
 import uuid
-from sqlalchemy import Uuid
+from sqlalchemy import func, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 class AuthorModel(Base):
     __tablename__ = 'authors'
 
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=func.uuidv7())
 ```
 
-If your PostgreSQL exposes native `uuidv7()` (PG 17+ or the `pg_uuidv7` extension), prefer generating it in the database via `server_default`; otherwise generate in Python with `uuid.uuid7()` (stdlib since Python 3.14).
+If your PostgreSQL exposes native `uuidv7()` (PG 18+; the `pg_uuidv7` extension names it `uuid_generate_v7()`), prefer generating it in the database via `server_default`; otherwise generate in Python with `uuid.uuid7()` (stdlib since Python 3.14).
 
 ## Usage
 
@@ -137,11 +136,7 @@ class AuthorService:
 
     async def create_author(self, creation: AuthorCreate) -> Author:
         await self._validate_author_unique(creation)
-        query = (
-            insert(AuthorModel)
-            .values(first_name=creation.first_name, last_name=creation.last_name)
-            .returning(AuthorModel)
-        )
+        query = insert(AuthorModel).values(**creation.model_dump()).returning(AuthorModel)
         author = await self._session.scalar(query)
         return Author.model_validate(author)
 
@@ -238,7 +233,7 @@ The transformer validates ORM objects into Pydantic models — without it you ge
 
 ### Filtering
 
-Case-insensitive contains pattern for text filters:
+Case-insensitive contains pattern for text filters (`autoescape=True` keeps `%` and `_` in user input literal):
 
 ```python
 from sqlalchemy import Select
@@ -247,7 +242,7 @@ from sqlalchemy import Select
 def _apply_filters(self, query: Select, filters: AuthorListFilters) -> Select:
     if filters.name:
         full_name = func.concat(AuthorModel.first_name, ' ', AuthorModel.last_name)
-        query = query.filter(full_name.icontains(filters.name))
+        query = query.filter(full_name.icontains(filters.name, autoescape=True))
     if filters.ids:
         query = query.filter(AuthorModel.id.in_(filters.ids))
     if filters.created_from:
@@ -267,7 +262,7 @@ Never hand-write migration files. Ensure `migrations/env.py` imports all models 
 
 ## Testing
 
-See `reference/testing.md` for testcontainers-backed database isolation: session-scoped Postgres container,
+See `references/testing.md` for testcontainers-backed database isolation: session-scoped Postgres container,
 migration-backed engine fixture, function-scoped rollback session, and startup-migration disabling.
 
 ## Red Flags — STOP
@@ -288,9 +283,9 @@ These mean the database boundary is drifting. Stop and apply the named rule:
 | Add a repository layer between services and SQLAlchemy | Usage — services own queries directly |
 | Paginate with manual `limit` / `offset` math | Pagination — use `apaginate()` with a transformer |
 | Use `==` for requested case-insensitive text search | Filtering — use `icontains` / `ilike` |
-| Move request-scoped `commit()` / `rollback()` from the session provider into CRUD service methods | Setup — keep request transaction ownership in `open_db_session()`; see `reference/setup.md` |
+| Move request-scoped `commit()` / `rollback()` from the session provider into CRUD service methods | Setup — keep request transaction ownership in `open_db_session()`; see `references/setup.md` |
 | Wrap a single-statement CRUD write in `begin_nested()` / SAVEPOINT for "safety" or "test rollback" | Service Query Patterns — `begin_nested()` is for partial rollback inside a larger transaction; for test isolation use `join_transaction_mode='create_savepoint'` in the fixture |
-| Replace Postgres tests with SQLite or mocks | Testing — use testcontainers; see `reference/testing.md` |
+| Replace Postgres tests with SQLite or mocks | Testing — use testcontainers; see `references/testing.md` |
 
 ## Gotchas
 

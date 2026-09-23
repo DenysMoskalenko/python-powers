@@ -1,6 +1,6 @@
 ---
 name: fastapi-service
-description: Use when building or modifying a FastAPI service without a repository layer — adding routes, services, Pydantic schemas, exception handlers, pydantic-settings configuration, dependency injection, or project structure. For SQLAlchemy models and migrations see `postgres-database`; for pydantic-ai agents see `ai-agents`.
+description: Use when adding or changing a FastAPI endpoint (`routes.py`, `service.py`, `schemas.py`) or building a FastAPI service without a repository layer — routes, service classes, dependency injection, Pydantic schemas, query-parameter models, status codes, domain exception handlers, pydantic-settings configuration, the app factory, and project structure. For SQLAlchemy models and migrations see `postgres-database`; for pydantic-ai agents see `ai-agents`.
 ---
 
 # FastAPI Service Patterns
@@ -24,13 +24,13 @@ Routes parse HTTP requests into typed schemas and delegate to services. Services
 
 ## Project Structure
 
-Package-by-feature: each module under `app/modules/` is one self-contained vertical slice — business CRUD, an AI agent, or operational. Cross-cutting technical code lives outside it — `app/core/` (config, exceptions, exception handlers, shared schemas, lifespan) and `app/infrastructure/` (db, llms). A business change touches one module folder; an infra change touches one infra folder.
+Package-by-feature: each module under `app/domains/` is one self-contained vertical slice — business CRUD, an AI agent, or operational. Cross-cutting technical code lives outside it — `app/core/` (config, exceptions, exception handlers, shared schemas, lifespan) and `app/infrastructure/` (db, llms). A business change touches one module folder; an infra change touches one infra folder.
 
 ```text
 app/
   main.py                  # create_app() — FastAPI app factory
   router.py                # create_router() — aggregates module routers
-  modules/
+  domains/
     <module>/              # one vertical slice per module
       routes.py            # thin HTTP handlers
       schemas.py           # request/response + internal Pydantic models
@@ -47,7 +47,7 @@ SQLAlchemy models are the one deliberate exception to "everything in the module 
 
 Start flat: a module is three files (`routes.py`, `schemas.py`, `service.py`). Promote a concern to a subpackage **only once it splits into 2+ files** (e.g. `books/services/` holding `service_books.py` + `service_books_validator.py`). When a subpackage appears:
 
-- **Facade `__init__.py`** re-exports public symbols via `__all__`. External callers import from the package root (`from app.modules.books.services import BooksService`), never the deep path.
+- **Facade `__init__.py`** re-exports public symbols via `__all__`. External callers import from the package root (`from app.domains.books.services import BooksService`), never the deep path.
 - **Internal siblings import directly** (`from .service_books import BooksService`), never through their own facade — this avoids circular imports during package init.
 - **Keep the descriptive filename prefix** (`service_books.py`, not `books.py`) so files stay unambiguous in search and editor tabs.
 
@@ -113,8 +113,27 @@ class AuthorService:
         author = await self._session.scalar(query)
         return Author.model_validate(author)
 
-    async def _validate_author_unique(self, creation: AuthorCreate) -> None:
-        ...
+    async def update_author(self, author_id: int, updates: AuthorUpdate) -> Author:
+        await self.get_author_by_id(author_id)
+        await self._validate_author_unique(updates, exclude_author_id=author_id)
+        query = update(AuthorModel).filter(AuthorModel.id == author_id).values(**updates.model_dump())
+        author = await self._session.scalar(query.returning(AuthorModel))
+        if author is None:
+            raise NotFoundError(f'Author(id={author_id}) not found')
+        return Author.model_validate(author)
+
+    async def _validate_author_unique(self, creation: AuthorCreate, *, exclude_author_id: int | None = None) -> None:
+        query = select(AuthorModel.id).filter(
+            AuthorModel.first_name == creation.first_name,
+            AuthorModel.last_name == creation.last_name,
+            AuthorModel.birthday.is_not_distinct_from(creation.birthday),  # NULL-safe equality
+        )
+        if exclude_author_id is not None:
+            query = query.filter(AuthorModel.id != exclude_author_id)
+        if await self._session.scalar(query) is not None:
+            raise AlreadyExistError(
+                f'Author(name={creation.first_name} {creation.last_name}, birthday={creation.birthday}) already exists'
+            )
 ```
 
 Key patterns:
@@ -134,7 +153,7 @@ _logger.info(
 Schemas live in the module's `schemas.py`. Follow this inheritance pattern:
 
 ```python
-from datetime import UTC, date, datetime
+from datetime import date, datetime, UTC
 from typing import Literal
 
 from pydantic import BaseModel, computed_field, ConfigDict, Field, field_validator
@@ -212,18 +231,18 @@ class AlreadyExistError(BaseServiceError):
 Exception handlers in `app/core/exception_handlers.py` translate to HTTP:
 
 ```python
-def not_found_exception_handler(request: Request, exc: NotFoundError) -> None:
+def not_found_exception_handler(request: Request, exc: NotFoundError) -> NoReturn:  # noqa: ARG001
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc) or 'Not Found') from exc
 
-def conflict_exception_handler(request: Request, exc: AlreadyExistError) -> None:
+def conflict_exception_handler(request: Request, exc: AlreadyExistError) -> NoReturn:  # noqa: ARG001
     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc) or 'Conflict') from exc
 ```
 
-Register handlers in `create_app()` — keep at the end so they wrap all middleware/routers.
+Register handlers in `create_app()`; their order relative to routers and middleware does not matter — Starlette reads the handler mapping on the first request.
 
 ## Setup
 
-See `reference/setup.md` for one-time project wiring: `pydantic-settings` configuration (`Settings` + `lru_cache`d `get_settings`), the `create_router()` aggregator (business modules under `/v1`, operational endpoints unversioned), and the `create_app()` factory (register exception handlers **last** so they wrap all routers and middleware).
+See `references/setup.md` for one-time project wiring: `pydantic-settings` configuration (`Settings` + `lru_cache`d `get_settings`), the `create_router()` aggregator (business modules under `/v1`, operational endpoints unversioned), and the `create_app()` factory.
 
 ## Red Flags — STOP
 
@@ -238,10 +257,9 @@ These mean the service boundary is drifting. Stop and apply the named rule:
 | Import a subpackage's internals from outside via its deep path, or route an internal sibling import through its own facade | Module growth — outside callers import the facade; internal siblings import directly |
 | Put request/response schemas outside their module | Schemas — colocate schemas in the module's `schemas.py` |
 | Use bare `str` for `sort_by` or other constrained query fields | Schemas — use `Literal[...]` for local constrained values |
-| Register exception handlers before routers or middleware | Setup — register handlers last |
 | Return ORM models without a response schema | Schemas — response models use `ConfigDict(from_attributes=True)` |
 
 ## Gotchas
 
 - `Annotated[Service, Depends()]` with empty `Depends()` triggers FastAPI auto-injection of the service's own dependencies
-- Filter/sorting schemas as `Depends()` parameters parse query strings into typed models automatically
+- Filter/sorting schemas as `Depends()` parameters parse query strings into typed models automatically — except a `list[...]` field (`ids`), which `Depends()` reads from the request body; take such a filters schema as `Annotated[AuthorListFilters, Query()]` (one per route, no bare scalar query parameter beside it, else 422)

@@ -54,7 +54,11 @@ select = [
 pydocstyle.convention = 'google'
 
 [tool.ruff.lint.mccabe]
-max-complexity = 15
+max-complexity = 12
+
+[tool.complexipy]
+paths = ["app", "tests"]
+max-complexity-allowed = 12
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "ARG"]
@@ -73,7 +77,7 @@ force-sort-within-sections = true
 
 ```toml
 [tool.ty.rules]
-unused-ignore-comment = "ignore"
+unused-type-ignore-comment = "ignore"
 ```
 
 ## pytest Configuration
@@ -84,16 +88,19 @@ asyncio_mode = "auto"
 addopts = "-ra"
 ```
 
-Add `asyncio_default_fixture_loop_scope = "session"` only when the project actually uses
-session-scoped async fixtures.
+Add `asyncio_default_fixture_loop_scope = "session"` and `asyncio_default_test_loop_scope = "session"`
+only when the project actually uses session-scoped async fixtures; the fixture setting alone
+leaves function-scoped tests on a different event loop than the fixtures.
 
 ## pre-commit Configuration
 
-Ruff and ty must run from the project's uv environment, so keep them as local hooks.
+The runner is `prek` (`uv run prek install`), which reads this file. Ruff and ty must run from
+the project's uv environment, so keep them as local hooks.
 
 ```yaml
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer

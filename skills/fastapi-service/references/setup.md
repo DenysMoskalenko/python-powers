@@ -16,12 +16,15 @@ Use `pydantic-settings` with `.env` file. Cache with `lru_cache`:
 
 ```python
 from functools import lru_cache
+from importlib.metadata import version
 
-from pydantic import PostgresDsn, SecretStr
+from pydantic import Field, PostgresDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    PROJECT_NAME: str = 'my-service'
+    PROJECT_VERSION: str = Field(default_factory=lambda: version('my-service'))
     DATABASE_URL: PostgresDsn
     OPENAI_API_KEY: SecretStr
 
@@ -33,6 +36,7 @@ def get_settings() -> Settings:
     return Settings()
 ```
 
+- `PROJECT_VERSION` is read from the installed package metadata, so `pyproject.toml` is the only place to bump it; this needs the project installed (a `[build-system]` table, as the template has), and an env var still overrides it
 - `frozen=True` prevents mutation
 - `SecretStr` for sensitive values — never log or expose
 - Use `dist.env` as the template, never commit `.env`
@@ -44,9 +48,9 @@ def get_settings() -> Settings:
 ```python
 from fastapi import APIRouter
 
-from app.modules.authors.routes import router as authors_router
-from app.modules.books.routes import router as books_router
-from app.modules.health_checks.routes import router as health_checks_router
+from app.domains.authors.routes import router as authors_router
+from app.domains.books.routes import router as books_router
+from app.domains.health_checks.routes import router as health_checks_router
 
 
 def create_router() -> APIRouter:
@@ -62,7 +66,7 @@ def create_router() -> APIRouter:
 
 ## App Factory
 
-`create_app()` mounts the aggregated router, then registers exception handlers **last** so they wrap all middleware and routers:
+`create_app()` mounts the aggregated router and registers exception handlers (their order relative to routers and middleware does not matter):
 
 ```python
 def create_app() -> FastAPI:
