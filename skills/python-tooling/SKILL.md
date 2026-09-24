@@ -54,19 +54,17 @@ Load `references/setup.md` when creating or changing the full ruff configuration
 
 ### Usage
 
-Use the wrapper the project provides:
-
 ```bash
-# If the project exposes Make targets
-make lint
-make lint-no-format
+# After an edit: only the files you changed
+uv run ruff check --fix <paths>
+uv run ruff format <paths>
 
-# Otherwise run the equivalent commands directly
-uv run ruff format .
+# Whole project: `make lint` if the project exposes Make targets, otherwise
 uv run ruff check --fix .
+uv run ruff format .
 ```
 
-**Always run the formatter+linter after changing any Python file.** If the repo exposes `make lint`, use it. Otherwise run the equivalent `uv run ruff ...` commands directly.
+**Always run the formatter+linter after changing any Python file**, on the files you changed. Fix before formatting: an autofix can leave code that `ruff format --check` rejects. `make lint` reformats the whole project, so use it only when the repository is already clean or the task is the cleanup.
 
 ## ty — Type Checking
 
@@ -126,12 +124,12 @@ for the full `.pre-commit-config.yaml` snippet.
 
 ## Optional Makefile Workflow
 
-If the project uses `make`, make it the single entry point for common quality workflows. If it does not, run the equivalent `uv run ...` commands directly.
+If the project uses `make`, use its targets for whole-project workflows. If it does not, run the equivalent `uv run ...` commands directly.
 
 | Command | What it does |
 |---------|-------------|
 | `make lint` | Format + lint with auto-fix |
-| `make lint-no-format` | Lint only (CI) |
+| `make lint-no-format` | Lint only, no format check (`ruff check`) |
 | `make typecheck` | Type check with ty |
 | `make complexitycheck` | Cognitive complexity check with complexipy |
 | `make test` | Run pytest |
@@ -140,8 +138,8 @@ If the project uses `make`, make it the single entry point for common quality wo
 
 ### Workflow Rules
 
-1. **After every Python code change**: run the formatter+linter pair (`make lint` or equivalent direct commands)
-2. **Before opening a PR**: run the full local quality gate (`make check` or the equivalent direct command sequence)
+1. **After every Python code change**: run the formatter+linter pair on the changed files (`uv run ruff check --fix <paths>`, then `uv run ruff format <paths>`; `make lint` only when the repository is already clean)
+2. **Before opening a PR**: run the full local quality gate (`make check` or the equivalent direct command sequence); `make check` starts with `make lint`, so on a repository that is not formatter-clean run `make lint-no-format typecheck complexitycheck test-coverage` instead
 3. **If the repo defines wrappers**: keep wrapper names boring and obvious (`lint`, `typecheck`, `test`, `check`)
 4. **If the repo does not define wrappers**: document the direct `uv run ...` commands instead of adding `make` just for habit
 
@@ -149,10 +147,10 @@ If the project uses `make`, make it the single entry point for common quality wo
 
 A minimal CI pipeline usually runs:
 
-1. **Lint job**: `ruff check` (no format — CI checks, doesn't fix) + `ty check`
+1. **Lint job**: `ruff format --check` + `ruff check` (CI checks, doesn't fix) + `ty check` + `complexipy`
 2. **Test job**: `pytest` (after lint passes)
 
-CI does not need `ruff format` if formatting is enforced locally via the prek hooks and the developer workflow. The CI lint job should use the direct commands or their wrapper equivalents.
+CI checks formatting even though hooks format locally: a hook can be skipped with `--no-verify` or never installed in a clone. The CI lint job should use the direct commands; `make lint-no-format` runs only `ruff check`.
 
 ## Gotchas
 

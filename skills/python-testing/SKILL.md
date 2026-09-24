@@ -7,7 +7,7 @@ description: Use when writing, reviewing, or planning tests for a FastAPI servic
 
 Testing patterns for FastAPI services. Scoped to HTTP/API testing, shared test fixtures, and FastAPI dependency overrides. Technology-specific infrastructure (database isolation, AI agent mocking) lives in dedicated skills.
 
-> Requires Python 3.13+, pytest, pytest-asyncio, polyfactory, httpx2 (`from httpx2 import ASGITransport, AsyncClient`; the `httpx` module name is not installed).
+> Requires Python 3.13+, pytest, pytest-asyncio, polyfactory, httpx2 (`from httpx2 import ASGITransport, AsyncClient`; `httpx` is not a declared dependency).
 > Examples use `app/` as the top-level package. Substitute your package name if different.
 
 **Related**: `python-code-style`, `python-tooling`, `postgres-database`, `ai-agents`, `project-scaffolding`.
