@@ -47,7 +47,7 @@ separately unless the repo has a specific migration constraint.
 Baseline choices:
 - **120-character lines** — wide enough for modern screens, narrow enough for side-by-side diffs
 - **Single quotes** — less visual noise than double quotes
-- **Tests ignore S101** (assert) and **ARG** (unused arguments) — these are normal in test code
+- **Tests ignore S101** (assert), **ARG** (unused arguments), and **ANN** (annotations; fakes take `*args: Any`) — these are normal in test code
 - **isort integrated** — import sorting handled by ruff, no separate isort config needed
 
 Load `references/setup.md` when creating or changing the full ruff configuration.

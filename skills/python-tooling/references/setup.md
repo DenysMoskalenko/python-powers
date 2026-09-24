@@ -61,7 +61,7 @@ paths = ["app", "tests"]
 max-complexity-allowed = 12
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101", "ARG"]
+"tests/**/*.py" = ["S101", "ARG", "ANN"]
 
 [tool.ruff.lint.isort]
 known-local-folder = ["tests", "app", "scripts"]

@@ -63,7 +63,7 @@ Key rules:
 - `DateTime(timezone=True)` with `server_default=func.now()` for timestamps — DB generates the value; a naive column hands back naive datetimes that cannot be compared with `datetime.now(UTC)`
 - Explicit `String(N)` lengths matching schema `max_length`
 - `UniqueConstraint` in `__table_args__` with descriptive `name` (Alembic needs stable names)
-- `TYPE_CHECKING` guard for forward references in relationships
+- `TYPE_CHECKING` guard for forward references in relationships — a string target (`'BookModel'`) resolves only against model modules already imported, so the app imports them all at startup (`load_all_models()` from `app/infrastructure/db/models/__init__.py`, called in `create_app()` as well as in `migrations/env.py`)
 - Every `relationship(...)` declares `lazy='raise'` — no implicit loading; see [Loading relationships](#loading-relationships)
 - `passive_deletes=True` needs `ondelete='CASCADE'` on the child `ForeignKey` — services delete with Core `delete()`, which bypasses ORM cascades, so without the DB rule the delete raises `IntegrityError`
 

@@ -123,6 +123,7 @@ async def test_success(self, session: AsyncSession, client: AsyncClient) -> None
     assert Author.model_validate(actual)
     expected = payload.model_dump(mode='json') | {
         'id': actual['id'],
+        'name': f'{payload.first_name} {payload.last_name}',
         'created_at': actual['created_at'],
         'updated_at': actual['updated_at'],
     }
@@ -130,7 +131,7 @@ async def test_success(self, session: AsyncSession, client: AsyncClient) -> None
 ```
 
 - `model_dump(mode='json')` for JSON-serializable dict (handles dates, UUIDs)
-- Merge payload with server-generated fields (`id`, timestamps) for full comparison
+- Merge payload with server-generated fields (`id`, timestamps) and computed fields (`name`) for full comparison
 - `model_validate` to confirm the response matches the expected schema
 
 ### Error Cases
