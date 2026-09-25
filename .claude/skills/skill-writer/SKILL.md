@@ -13,15 +13,6 @@ Meta-skill for authoring skills in this repository's `skills/` folder. Captures 
 
 **Related**: none — this meta-skill is used alone when authoring or editing other skills. It references the domain skills by name in the ownership table.
 
-## When to use
-
-This skill is meta and prone to over-application. **Do not load** for:
-- Writing Python application code — use the domain skills (`python-code-style`, `fastapi-service`, etc.)
-- Authoring skills outside `skills/` (different conventions apply)
-- Non-skill documentation (README, AGENTS.md, plain notes)
-
-> Triggers live in the frontmatter `description`. This section exists only because the meta-skill needs explicit "do not load" guidance — most skills should not have a `## When to use` section at all (see [Body skeleton](#body-skeleton) below).
-
 ## House style
 
 ### Folder layout
@@ -281,9 +272,6 @@ A long `SKILL.md` slows every load. Fix: main file teaches patterns + workflow; 
 
 **6. Inconsistent terminology within a skill.**
 Mixing "endpoint", "route", and "path" in the same skill confuses the agent. Fix: pick one term per concept and search/replace.
-
-**7. `## When to use` body section that restates the description.**
-The loader picks the skill from the frontmatter `description` alone; the body is read only after the skill has already been chosen. A `## When to use` block that bullets the same triggers in different words is paid on every load and adds nothing. Fix: drop the section. Keep it only when it carries information the description cannot — explicit "Do not load for:" exclusions, or sub-triggers too granular for the 30-55-word description budget. A one-line sibling pointer ("For X use `<sibling>`") belongs under the overview / `**Related**:` line, not its own section.
 
 ## Gotchas
 
