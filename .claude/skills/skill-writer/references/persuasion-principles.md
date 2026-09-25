@@ -17,7 +17,7 @@ Do not use them for pure reference/API docs.
 
 | Principle | Use in skills | Avoid |
 |---|---|---|
-| Authority | `MUST`, `Never`, `No exceptions` for hard rules | Heavy authority for ordinary guidance |
+| Authority | A plain imperative with its reason (`Never X — Y breaks`) for hard rules | Caps, `No exceptions`, or stacked emphasis without a reason |
 | Commitment | Required announcements, explicit choices, checklists | Vague "consider tracking this" language |
 | Scarcity | `Before proceeding`, `immediately after`, ordered gates | False urgency |
 | Social proof | "Every time", "X without Y fails" for known patterns | Unsupported claims |
@@ -36,7 +36,7 @@ Consider writing tests before implementation when feasible.
 Tight:
 
 ```markdown
-Write implementation before the failing test? Stop. Delete it and restart from the test. No exceptions.
+Write implementation before the failing test? Stop, delete it, and restart from the test — code written first biases the test toward what the code already does.
 ```
 
 For this repository, prefer precise Red Flags:

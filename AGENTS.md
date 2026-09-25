@@ -113,6 +113,12 @@ Before opening or preparing a pull request:
 3. Show the complete diff to the repository owner.
 4. Get explicit approval before submitting.
 5. Include what changed, why it changed, and how it was verified.
+6. If it changes anything under `skills/`, bump `version` in the same pull request, in all
+   four manifests (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`,
+   `.codex-plugin/plugin.json`, `.cursor-plugin/plugin.json`): Claude Code serves the
+   cached plugin until the version string changes, so without a bump auto-update never
+   delivers the change. Patch for corrections, minor when a recommended pattern changes.
+   After merge, the owner tags the merge commit with `claude plugin tag --push`.
 
 Do not bundle unrelated changes.
 

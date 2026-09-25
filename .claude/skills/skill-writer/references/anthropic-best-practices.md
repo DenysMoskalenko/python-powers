@@ -22,7 +22,7 @@ Before adding prose, ask:
 
 ## Progressive disclosure
 
-Keep `SKILL.md` as the trigger, workflow, and navigation surface. Move bulky material to `references/` when it is over about 100 lines, used only in some tasks, or mostly examples/API detail.
+Keep `SKILL.md` as the trigger, workflow, and navigation surface. Move bulky material to `references/` when a section exceeds 200 lines, is used only in some tasks, or is mostly examples/API detail.
 
 Rules:
 
@@ -48,13 +48,6 @@ Bad descriptions:
 - Use first person
 - Add exclusions already implied by the name
 - Repeat the same trigger with `Use when...` and `Apply when...`
-
-The `description` is the ONLY frontmatter field the skill loader sees when deciding to
-load the skill. The body is read after the routing decision. A `## When to use` section
-in the body that paraphrases the description is therefore paid on every load and adds
-nothing — drop it. Keep an in-body trigger section only when it adds information the
-description cannot fit, such as explicit "Do not load for:" exclusions or sub-triggers
-too granular for the 30-55-word description budget.
 
 ## Workflows and validation loops
 

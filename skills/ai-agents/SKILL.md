@@ -83,12 +83,14 @@ def build_catalog_assistant_agent(model: Model) -> Agent[CatalogAssistantDeps, C
 
     @agent.tool
     async def count_items(ctx: RunContext[CatalogAssistantDeps], payload: CountCatalogItemsToolInput) -> int:
+        """Count catalog items matching the filters. Use for "how many" questions, totals, or counts."""
         return await ctx.deps.catalog_service.count_items(payload.filters)
 
     @agent.tool
     async def list_items(
         ctx: RunContext[CatalogAssistantDeps], payload: ListCatalogItemsToolInput
     ) -> list[CatalogToolItem]:
+        """List up to `limit` catalog items matching the filters. Use for examples, names, or lists."""
         items_page = await ctx.deps.catalog_service.list_items(
             payload.filters,
             CatalogListSorting(sort_by='name', sort_order='asc'),
@@ -101,7 +103,7 @@ def build_catalog_assistant_agent(model: Model) -> Agent[CatalogAssistantDeps, C
 
 Key patterns:
 - `Agent[Deps, Output]` — fully typed with dependency and output types
-- Tools registered with `@agent.tool` inside the builder — each tool gets `RunContext[Deps]`
+- Tools registered with `@agent.tool` inside the builder — each tool gets `RunContext[Deps]`, and its docstring is the tool description the LLM sees
 - Tool inputs are Pydantic `BaseModel` subclasses — the LLM sees their JSON schema
 - Tools call services from `ctx.deps`, never import globals
 - `retries=0` to fail fast; `retries` budgets tool-argument and output validation retries (never provider errors), and a retry hides a malformed call
@@ -135,10 +137,8 @@ CATALOG_ASSISTANT_SYSTEM_PROMPT = """
 You are a read-only assistant for a service catalog API.
 
 Rules:
-- Use `count_items` for questions asking "how many", totals, or counts.
-- Use `list_items` for questions asking for examples, names, or lists.
 - Stay within the catalog domain. If the question is unrelated, refuse politely.
-- Be concise and factual.
+- Answer concisely, from tool results only; if they return nothing relevant, say so.
 """.strip()
 ```
 

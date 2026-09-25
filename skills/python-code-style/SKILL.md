@@ -39,8 +39,6 @@ class AuthorService:
 
 Prefer fewer lines when the result is equally readable. Don't split into 3 lines what fits cleanly on 1. Let ruff handle line breaks — write the compact version and the formatter will split it if it exceeds the line length.
 
-Never leave trailing whitespace. Ruff and the prek hooks should remove it automatically, but don't introduce formatting noise on purpose.
-
 ```python
 return Author.model_validate(author)
 
@@ -79,8 +77,8 @@ from typing import Literal
 
 
 class AIModelName(StrEnum):
-    GPT_5_4 = 'gpt-5.4'
-    SONNET_4_6 = 'sonnet-4.6'
+    PRIMARY = 'primary'
+    FALLBACK = 'fallback'
 
 
 type SortingOrder = Literal['asc', 'desc']
@@ -129,7 +127,7 @@ Code should be readable without comments. Achieve this through:
 - Workarounds: what's being worked around and why
 
 ```python
-include_exception_handlers(_app)  # registered last so handlers wrap all routers and middleware
+router.include_router(health_checks_router)  # unversioned — operational, not a v1 API contract
 ```
 
 ## Break Down Complexity
@@ -268,6 +266,5 @@ These mean you are about to violate a rule above. Stop and apply the named rule:
 
 ## Gotchas
 
-- `str | None` requires Python 3.10+ at runtime; you already target 3.13 — this is fine. The older `Optional[str]` form still works but is banned.
-- `StrEnum` members compare equal to their string value (`AIModelName.GPT_5_4 == 'gpt-5.4'` is `True`). Useful for JSON round-trips, occasionally surprising in asserts.
+- `StrEnum` members compare equal to their string value (`AIModelName.PRIMARY == 'primary'` is `True`). Useful for JSON round-trips, occasionally surprising in asserts.
 - `TypeAdapter(list[X])` is the idiomatic way to validate a list of pydantic models.
