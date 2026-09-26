@@ -1,6 +1,6 @@
 {
   "name": "python-powers",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Reusable engineering skills for AI-assisted Python development.",
   "author": {
     "name": "Denys Moskalenko",
@@ -34,7 +34,7 @@
   "interface": {
     "displayName": "Python Powers",
     "shortDescription": "Reusable Python, FastAPI, PostgreSQL, testing, scaffolding, and AI-agent engineering skills",
-    "longDescription": "Python Powers gives Codex focused engineering guidance for Python 3.13+ services, FastAPI, PostgreSQL, pytest, uv, ruff, ty, and pydantic-ai agents, plus scaffolding brand-new services from a ready-made template.",
+    "longDescription": "Python Powers gives Codex focused engineering guidance for Python 3.14+ services, FastAPI, PostgreSQL, pytest, uv, ruff, ty, and pydantic-ai agents, plus scaffolding brand-new services from a ready-made template.",
     "developerName": "Denys Moskalenko",
     "category": "Coding",
     "capabilities": [

@@ -9,6 +9,7 @@ Examples use `app/` as the top-level package — substitute your package name if
 - `Base` / `DeclarativeBase` with Alembic naming convention
 - `lru_cache`d async engine and session factory
 - `get_session` (FastAPI dependency) and `open_db_session` (context manager) providers
+- Dependency lifetime for CRUD and streaming responses
 
 ## DeclarativeBase
 
@@ -74,6 +75,16 @@ async def open_db_session() -> AsyncGenerator[AsyncSession, None]:
         await session.close()
 ```
 
-- `get_session` — async generator for FastAPI `Depends()`, one session per request
+- `get_session` — async generator for FastAPI `Depends()`, shared within a request for the same dependency scope
 - `open_db_session` — context manager for non-FastAPI use (scripts, agents, CLI)
 - `lru_cache` on engine and factory — singleton per process, clearable in tests
+
+## Dependency lifetime
+
+For ordinary CRUD, inject `Annotated[AsyncSession, Depends(get_session, scope='function')]` (FastAPI 0.121+). Teardown, including `commit()`, finishes after the endpoint function returns and before the response is sent, so a commit failure can still produce an error response.
+
+Keep the default `use_cache=True`: nested services using the same `get_session` and scope share one session per request. `function` refers to the endpoint's lifetime, not each service constructor. Use the same scope consistently; mixing `function` and `request` creates separate dependency cache entries and sessions.
+
+For a streaming response that reads from the session after the endpoint returns, use `Depends(get_session, scope='request')` so the session stays open through response delivery. Streams that do not use the session while streaming can keep `function` scope. Complete any writes in a transaction that commits before streaming starts; a commit failure after the response has started cannot change its status.
+
+See [FastAPI dependency scopes](https://fastapi.tiangolo.com/tutorial/dependencies/dependencies-with-yield/#early-exit-and-scope) for teardown timing and restrictions on yielding sub-dependencies.

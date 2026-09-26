@@ -7,7 +7,7 @@ description: Use when writing, reviewing, or planning tests for a FastAPI servic
 
 Testing patterns for FastAPI services. Scoped to HTTP/API testing, shared test fixtures, and FastAPI dependency overrides. Technology-specific infrastructure (database isolation, AI agent mocking) lives in dedicated skills.
 
-> Requires Python 3.13+, pytest, pytest-asyncio, polyfactory, httpx2 (`from httpx2 import ASGITransport, AsyncClient`; `httpx` is not a declared dependency).
+> Requires Python 3.14+, pytest, pytest-asyncio, polyfactory, httpx2 (`from httpx2 import ASGITransport, AsyncClient`; `httpx` is not a declared dependency).
 > Examples use `app/` as the top-level package. Substitute your package name if different.
 
 **Related**: `python-code-style`, `python-tooling`, `postgres-database`, `ai-agents`, `project-scaffolding`.
@@ -29,7 +29,6 @@ from polyfactory.fields import Use
 
 class AuthorCreateFactory(ModelFactory[AuthorCreate]):
     __model__ = AuthorCreate
-    __check_model__ = False
 
     first_name = Use(lambda: AuthorCreateFactory.__faker__.first_name())
     last_name = Use(lambda: AuthorCreateFactory.__faker__.last_name())
@@ -37,7 +36,6 @@ class AuthorCreateFactory(ModelFactory[AuthorCreate]):
     description = Use(lambda: AuthorCreateFactory.__faker__.text())
 ```
 
-- `__check_model__ = False` — skip model validation at factory class definition
 - `Use(lambda: ...)` with faker — produce realistic domain values instead of random strings
 - One factory per `*Create` schema, all in `tests/factories.py`
 - Build instances: `AuthorCreateFactory.build()` — pydantic validators run by default (`factory_use_construct=False`); pass `factory_use_construct=True` only when a test needs an object that skips them
@@ -178,24 +176,21 @@ def override_dependency(app: FastAPI, dependency: Callable, override: Callable) 
             route.app.dependency_overrides[dependency] = override
 
 
-def _remove_override(app: FastAPI, dependency: Callable) -> None:
-    app.dependency_overrides.pop(dependency, None)
-    for route in app.router.routes:
-        if isinstance(route, Mount) and isinstance(route.app, FastAPI):
-            route.app.dependency_overrides.pop(dependency, None)
-
-
 @contextmanager
 def temporary_override(app: FastAPI, dependency: Callable, override: Callable) -> Generator[None, None, None]:
-    previous = app.dependency_overrides.get(dependency)
+    previous = {app: app.dependency_overrides.get(dependency)}
+    for route in app.router.routes:
+        if isinstance(route, Mount) and isinstance(route.app, FastAPI):
+            previous[route.app] = route.app.dependency_overrides.get(dependency)
     override_dependency(app, dependency, override)
     try:
         yield
     finally:
-        if previous is not None:
-            override_dependency(app, dependency, previous)
-        else:
-            _remove_override(app, dependency)
+        for target, previous_override in previous.items():
+            if previous_override is not None:
+                target.dependency_overrides[dependency] = previous_override
+            else:
+                target.dependency_overrides.pop(dependency, None)
 
 
 @contextmanager
@@ -207,12 +202,12 @@ def temporary_overrides(app: FastAPI, overrides: Sequence[DepOverride]) -> Gener
 ```
 
 - `override_dependency` — propagates overrides to mounted sub-applications
-- `temporary_override` — restores original dependency when the block exits
+- `temporary_override` — restores each app's previous override (or removes it if absent) when the block exits
 - `temporary_overrides` — batch version for multiple overrides
 
 ### Sentinel Pattern
 
-Override default dependencies with a sentinel that fails loudly if the proper fixture wasn't loaded:
+Override `get_session` with a sentinel so tests can receive the dependency without opening a real session:
 
 ```python
 class SessionFixtureDoesNotSetExplicitly: ...
@@ -223,7 +218,7 @@ def override_app_test_dependencies(app: FastAPI) -> None:
         override_dependency(app, dep.dependency, dep.override)
 ```
 
-This catches missing fixture bugs early — if a test forgets to include the `session` fixture, it gets a clear error.
+Calling session methods such as `execute()` without the `session` fixture raises an `AttributeError` naming the sentinel. Merely injecting the dependency does not fail.
 
 ## App and Client Fixtures
 
@@ -272,6 +267,6 @@ These mean the test strategy is wrong. Stop and reconsider:
 ## Gotchas
 
 - `factory_use_construct` defaults to `False`, so `.build()` already runs pydantic validators; `factory_use_construct=True` skips them
-- The default `get_session` override raises a sentinel if the `session` fixture wasn't loaded — this catches missing fixture bugs early
+- The default `get_session` override returns a sentinel; accessing session methods without the `session` fixture raises an `AttributeError`
 - Session-scoped `app` and `client` fixtures mean the FastAPI app is created once and shared across all tests
 - `model_dump(mode='json')` is required for proper serialization of dates, UUIDs, and enums in test assertions

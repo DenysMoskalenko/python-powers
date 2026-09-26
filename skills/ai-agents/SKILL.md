@@ -7,7 +7,7 @@ description: Use when adding an LLM, assistant, or chatbot endpoint to a FastAPI
 
 Patterns for building pydantic-ai agents integrated into FastAPI services. An agent is a module like any other (`app/domains/<feature>/`) — only its internals (builder, tools, prompt, agent/tool schemas) are agent-specific.
 
-> Requires Python 3.13+, pydantic-ai, FastAPI.
+> Requires Python 3.14+, pydantic-ai, FastAPI.
 > Examples use `app/` as the top-level package (the reference project's convention). Substitute your package name if different.
 
 **Related**: `python-code-style`, `fastapi-service`, `python-testing`, `project-scaffolding`.
@@ -47,7 +47,7 @@ class CatalogAssistantDeps:
     catalog_service: CatalogService
 ```
 
-- `frozen=True` — immutable, safe for concurrent use
+- `frozen=True` — prevents field reassignment; referenced services and sessions are not made concurrency-safe
 - `slots=True` — memory efficient
 - Include only what the agent's tools need (services, config, session)
 
@@ -81,12 +81,12 @@ def build_catalog_assistant_agent(model: Model) -> Agent[CatalogAssistantDeps, C
         model_settings=ModelSettings(max_tokens=4096, thinking='low'),
     )
 
-    @agent.tool
+    @agent.tool(sequential=True)
     async def count_items(ctx: RunContext[CatalogAssistantDeps], payload: CountCatalogItemsToolInput) -> int:
         """Count catalog items matching the filters. Use for "how many" questions, totals, or counts."""
         return await ctx.deps.catalog_service.count_items(payload.filters)
 
-    @agent.tool
+    @agent.tool(sequential=True)
     async def list_items(
         ctx: RunContext[CatalogAssistantDeps], payload: ListCatalogItemsToolInput
     ) -> list[CatalogToolItem]:
@@ -106,6 +106,7 @@ Key patterns:
 - Tools registered with `@agent.tool` inside the builder — each tool gets `RunContext[Deps]`, and its docstring is the tool description the LLM sees
 - Tool inputs are Pydantic `BaseModel` subclasses — the LLM sees their JSON schema
 - Tools call services from `ctx.deps`, never import globals
+- Tools sharing one `AsyncSession` through a service must each use `sequential=True` so their operations do not overlap. Tools using independent, concurrency-safe resources can run in parallel.
 - `retries=0` to fail fast; `retries` budgets tool-argument and output validation retries (never provider errors), and a retry hides a malformed call
 - No `temperature` with `thinking`: depending on the model, pydantic-ai drops it with a warning or the provider rejects the request; keep `max_tokens` above a fixed thinking budget (`'low'` is 2,048 tokens on Claude Haiku 4.5)
 
@@ -294,6 +295,7 @@ These mean the agent boundary is drifting. Stop and apply the named rule:
 
 ## Gotchas
 
+- `sequential=True` serializes tool calls within one agent run; concurrent runs need separate sessions. It does not coordinate tasks started inside a tool.
 - `ALLOW_MODEL_REQUESTS = False` must be in `pytest_configure` before any agent import
 - Agent tools access services through `ctx.deps` only — never import at module level
 - `agent.override()` is scoped to a `with` block; original model is restored automatically
