@@ -7,7 +7,7 @@ description: Use when bootstrapping or changing Python tooling in `pyproject.tom
 
 Recommended baseline for modern Python projects. Prefer `pyproject.toml` for tool configuration when the tool supports it, keep tool-specific files when it does not (for example `.pre-commit-config.yaml`), and expose common workflows either through direct `uv run ...` commands or optional `make` wrappers. Adapt command names to the repo instead of assuming one fixed Makefile surface.
 
-> Requires Python 3.13+, uv, ruff, ty.
+> Requires Python 3.14+, uv, ruff, ty.
 
 **Related**: `python-code-style`, `python-testing`, `project-scaffolding`.
 
@@ -25,7 +25,7 @@ uv add <package>           # production dependency
 uv add --group dev <package>  # dev dependency
 ```
 
-Always use the latest version. Never guess or hardcode version numbers — `uv add` resolves the latest automatically.
+For new dependencies, let uv resolve the latest compatible version; never guess version numbers. Existing locked versions are preferred while compatible. Use `uv lock --upgrade-package <package>` when intentionally upgrading a dependency within the project's version constraints.
 
 ### Running Commands
 
@@ -86,7 +86,7 @@ spot failures quickly.
 - Use `asyncio_mode = auto` so async tests run without `@pytest.mark.asyncio`
 - Use `addopts = -ra` for compact extra summaries of skipped, xfailed, and failed tests
 - Add `asyncio_default_fixture_loop_scope = "session"` and `asyncio_default_test_loop_scope = "session"` only when you actually use session-scoped async fixtures — the fixture setting alone leaves function-scoped tests on a different event loop than the fixtures
-- Add targeted `filterwarnings` entries only for third-party warnings you intentionally suppress
+- Use `filterwarnings = ["error"]` to fail on warnings. Put targeted exceptions for intentionally suppressed third-party warnings after `"error"`; the last matching filter wins
 - Load `references/setup.md` when creating or changing the baseline pytest configuration
 
 ## Zero Warnings Policy
@@ -107,6 +107,7 @@ Example of a narrow suppression:
 ```toml
 [tool.pytest.ini_options]
 filterwarnings = [
+    "error",
     # upstream issue: github.com/org/lib/issues/123 — remove when fixed
     "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning:testcontainers.core.waiting_utils",
 ]
@@ -145,6 +146,8 @@ If the project uses `make`, use its targets for whole-project workflows. If it d
 
 ## CI Pipeline
 
+For uv-managed services, commit `uv.lock` alongside `pyproject.toml`. Start each CI job with `uv sync --locked`, including the dependency groups and extras that job needs, so missing or outdated lockfiles fail before checks run.
+
 A minimal CI pipeline usually runs:
 
 1. **Lint job**: `ruff format --check` + `ruff check` (CI checks, doesn't fix) + `ty check` + `complexipy`
@@ -154,7 +157,7 @@ CI checks formatting even though hooks format locally: a hook can be skipped wit
 
 ## Gotchas
 
-- Never guess dependency versions — `uv add` resolves the latest automatically
+- `uv add` respects compatibility constraints and existing locked versions; it does not automatically upgrade every package to its latest release
 - `uv run` is required even with an activated venv if you want consistent behavior in CI
 - ruff replaces black, isort, and most flake8 plugins — don't add those separately
 - ty is different from mypy — some type: ignore comments may need `# type: ignore[ty:...]` syntax

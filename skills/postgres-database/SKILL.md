@@ -7,7 +7,7 @@ description: Use when writing SQLAlchemy 2.0 async models, service queries (CRUD
 
 SQLAlchemy 2.0 async patterns for PostgreSQL. Services own queries directly — no repository layer.
 
-> Requires Python 3.13+, SQLAlchemy 2.0+, Alembic, PostgreSQL, testcontainers, psycopg.
+> Requires Python 3.14+, SQLAlchemy 2.0+, Alembic, PostgreSQL, testcontainers, psycopg; FastAPI for session dependencies.
 > Examples use `app/` as the top-level package. Substitute your package name if different.
 
 **Related**: `python-code-style`, `python-testing`, `python-tooling`, `fastapi-service`, `project-scaffolding`.
@@ -117,7 +117,7 @@ If your PostgreSQL exposes native `uuidv7()` (PG 18+; the `pg_uuidv7` extension 
 
 ### Service Query Patterns
 
-Services accept `AsyncSession` via `Depends(get_session)` and query directly:
+Services accept `AsyncSession` via `Depends(get_session, scope='function')` and query directly:
 
 ```python
 from sqlalchemy import delete, insert, select, update
@@ -126,7 +126,7 @@ from sqlalchemy import delete, insert, select, update
 class AuthorService:
     AUTHOR_LIST_ADAPTER: TypeAdapter[list[Author]] = TypeAdapter(list[Author])
 
-    def __init__(self, session: Annotated[AsyncSession, Depends(get_session)]) -> None:
+    def __init__(self, session: Annotated[AsyncSession, Depends(get_session, scope='function')]) -> None:
         self._session = session
 
     async def get_author_by_id(self, author_id: int) -> Author:
@@ -199,6 +199,7 @@ async def list_books(
 ) -> Page[Book]:
     query = (
         select(BookModel)
+        .order_by(BookModel.id)
         .options(selectinload(BookModel.author))  # many-to-one on a list — selectinload (dedupes shared parents)
         .options(selectinload(BookModel.tags))    # M2M — selectinload
     )
@@ -208,6 +209,8 @@ async def list_books(
         transformer=lambda books: self.BOOK_LIST_ADAPTER.validate_python(books, from_attributes=True),
     )
 ```
+
+Explicit joins can repeat parent entities even with `selectinload`. For relationship-existence filters, prefer `.any()` / `.has()` (`EXISTS`). For an intentional join, use `.unique()` when the result needs distinct parent entities.
 
 ### Pagination
 
@@ -224,7 +227,7 @@ async def list_authors(
 ) -> Page[Author]:
     query = select(AuthorModel)
     query = self._apply_filters(query, filters)
-    query = self._apply_sorting(query, sorting)
+    query = self._apply_sorting(query, sorting).order_by(AuthorModel.id)
     return await apaginate(
         self._session, query, params=pagination_params,
         transformer=lambda authors: self.AUTHOR_LIST_ADAPTER.validate_python(authors, from_attributes=True),
@@ -232,6 +235,10 @@ async def list_authors(
 ```
 
 The transformer validates ORM objects into Pydantic models — without it you get raw model instances.
+
+Paginated queries need a unique ordering: default to the primary key, or append it as a tie-breaker after the requested sorting. This stabilizes ordering for unchanged data; concurrent writes can still shift offset-based pages.
+
+Result-level `.unique()` does not remove duplicate SQL rows before `LIMIT` / `OFFSET`. Make the query return one row per parent before paginating so page sizes and totals remain correct.
 
 ### Filtering
 
@@ -260,7 +267,7 @@ Always generate with Alembic autogenerate:
 make migration MSG="add authors"
 ```
 
-Never hand-write migration files. Ensure `migrations/env.py` imports all models so metadata is complete. Customize the generated file only if Alembic cannot detect the change (e.g., data migrations).
+Never hand-write migration files. Ensure `migrations/env.py` imports all models so metadata is complete. Always review the generated `upgrade()` and `downgrade()` operations before applying them; correct renames, operation ordering, and required data changes as needed.
 
 ## Testing
 
@@ -279,7 +286,7 @@ These mean the database boundary is drifting. Stop and apply the named rule:
 | Declare `relationship(...)` without `lazy='raise'` | Loading relationships — every relationship is opt-in per query; no implicit loads |
 | Touch a relationship attribute that the originating query did not eager-load | Loading relationships — add `.options(joinedload(...))` (to-one on a single fetch) or `.options(selectinload(...))` (collections, or any to-one on a list) to the query, do not work around the error |
 | Use `joinedload` on a collection, or on a many-to-one in a list / paginated query | Loading relationships — both blow up (row duplication / `LIMIT` subquery wrap, or re-transmitting shared parents); use `selectinload`. `joinedload` is only for one-to-one, or a to-one on a single-object fetch |
-| Call `.unique()` on a query result | Loading relationships — `.unique()` is only needed when `joinedload` is used on a collection, which is forbidden; if you see `.unique()`, that's a signal to drop `joinedload` and switch to `selectinload` |
+| Add `.unique()` without checking why rows repeat | Loading relationships — inspect the query first; `selectinload` does not prevent duplication from explicit joins |
 | Soften `lazy='raise'` to `'select'` / `'raise_on_sql'` to make an error go away | Loading relationships — the rule stands; fix the originating query, do not weaken the model |
 | Hand-write a migration without autogenerate | Migrations — run `make migration MSG="..."` first |
 | Add a repository layer between services and SQLAlchemy | Usage — services own queries directly |

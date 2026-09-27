@@ -14,7 +14,7 @@ Contents:
 ## uv Environment Setup
 
 ```bash
-uv venv --python 3.13
+uv venv --python 3.14
 source .venv/bin/activate
 uv sync
 ```
@@ -24,7 +24,7 @@ uv sync
 ```toml
 [tool.ruff]
 line-length = 120
-target-version = "py313"
+target-version = "py314"
 
 [tool.ruff.format]
 quote-style = "single"
@@ -86,6 +86,7 @@ unused-type-ignore-comment = "ignore"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 addopts = "-ra"
+filterwarnings = ["error"]
 ```
 
 Add `asyncio_default_fixture_loop_scope = "session"` and `asyncio_default_test_loop_scope = "session"`

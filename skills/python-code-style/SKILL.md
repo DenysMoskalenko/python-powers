@@ -1,13 +1,13 @@
 ---
 name: python-code-style
-description: Use when writing, reviewing, or refactoring Python 3.13+ application or library code for readability or structure — type hints and PEP 695 aliases, code density, model-first data design, naming, dependency injection, early returns, fail-fast discipline, and architectural principles (KISS, YAGNI, SRP, DRY). For ruff and formatter configuration see `python-tooling`.
+description: Use when writing, reviewing, or refactoring Python 3.14+ application or library code for readability or structure — type hints and PEP 695 aliases, code density, model-first data design, naming, dependency injection, early returns, fail-fast discipline, and architectural principles (KISS, YAGNI, SRP, DRY). For ruff and formatter configuration see `python-tooling`.
 ---
 
 # Python Code Style
 
 Rules for writing production-quality Python. Every rule here reflects a deliberate choice — follow them unless you have a specific, stated reason not to. Prerequisite for the domain skills (`fastapi-service`, `postgres-database`, `ai-agents`), which assume these rules are in effect and do not re-state them.
 
-> Requires Python 3.13+.
+> Requires Python 3.14+.
 > Examples use `app/` as the top-level package. Substitute your package name if different.
 
 **Related**: `python-tooling`, `python-testing`, `fastapi-service`, `postgres-database`, `ai-agents`, `project-scaffolding`.
@@ -16,7 +16,7 @@ Rules for writing production-quality Python. Every rule here reflects a delibera
 
 Type every public function, method, and class attribute. Types are documentation that the toolchain can verify.
 
-**Modern syntax only** (Python 3.13+) — use builtin generics (`list[int]`, `dict[str, int]`, `tuple[int, ...]`) and union syntax (`str | None`, `str | int`). Never import `List`, `Dict`, `Optional`, `Union`, `Tuple` from `typing`. Use `typing` only for types that have no builtin equivalent: `Annotated`, `Literal`, `NoReturn`, `Protocol`, `TypedDict`, `Unpack`, `TYPE_CHECKING`; `Generator` and `AsyncGenerator` come from `collections.abc`. Declare aliases and generics with PEP 695 syntax (`type SortingOrder = Literal['asc', 'desc']`, `def first[ItemT](items: Sequence[ItemT]) -> ItemT | None`), not `TypeAlias` (deprecated since 3.12) or a module-level `TypeVar`.
+**Modern syntax only** (Python 3.14+) — use builtin generics (`list[int]`, `dict[str, int]`, `tuple[int, ...]`) and union syntax (`str | None`, `str | int`). Never import `List`, `Dict`, `Optional`, `Union`, `Tuple` from `typing`. Use `typing` only for types that have no builtin equivalent: `Annotated`, `Literal`, `NoReturn`, `Protocol`, `TypedDict`, `Unpack`, `TYPE_CHECKING`; `Generator` and `AsyncGenerator` come from `collections.abc`. Declare aliases and generics with PEP 695 syntax (`type SortingOrder = Literal['asc', 'desc']`, `def first[ItemT](items: Sequence[ItemT]) -> ItemT | None`), not `TypeAlias` (deprecated since 3.12) or a module-level `TypeVar`.
 
 **Never use `Any`** unless the value is genuinely unconstrained. If you reach for `Any` because you don't know the type, stop and find it. `Any` disables type checking for everything it touches.
 
@@ -29,7 +29,7 @@ type SortingOrder = Literal['asc', 'desc']
 
 
 class AuthorService:
-    def __init__(self, session: Annotated[AsyncSession, Depends(get_session)]) -> None:
+    def __init__(self, session: Annotated[AsyncSession, Depends(get_session, scope='function')]) -> None:
         self._session = session
 
     async def get_author_by_id(self, author_id: int) -> Author: ...
@@ -90,7 +90,7 @@ Inject dependencies via constructor parameters or framework DI (`Depends()`). Ne
 
 ```python
 class AuthorService:
-    def __init__(self, session: Annotated[AsyncSession, Depends(get_session)]) -> None:
+    def __init__(self, session: Annotated[AsyncSession, Depends(get_session, scope='function')]) -> None:
         self._session = session
 ```
 
@@ -104,7 +104,7 @@ Custom code is justified only when:
 - Security-sensitive code requires full auditability
 - No library exists after thorough evaluation
 
-When adding a library, always use the latest version. Never guess version numbers.
+When introducing a library, prefer the latest compatible version and respect the project's existing constraints. Never guess version numbers.
 
 ## No Utils Modules
 
@@ -200,7 +200,7 @@ except ProviderError as exc:
     raise PaymentFailedError(f'Charge failed: {exc}') from exc
 ```
 
-Fail fast pairs with model-first: Pydantic/dataclass validation at the boundary makes the body of your function trust its inputs.
+Validate inputs at boundaries with Pydantic or explicit checks. Standard-library dataclasses provide structure but do not automatically validate field types.
 
 ## Architecture Principles
 
@@ -217,9 +217,9 @@ Non-negotiable defaults, priority order:
 
 ## Modern Python
 
-Use the latest language features. Python 3.13+ is the target.
+Use the latest language features. Python 3.14+ is the target.
 
-- `uuid.uuid7()` over `uuid.uuid4()` when available (Python 3.14+; ordered, better for DB indexes)
+- `uuid.uuid7()` over `uuid.uuid4()` (ordered, better for DB indexes)
 - f-strings for all string formatting
 - `match` statements when they improve readability over `if/elif`
 - `pathlib.Path` over `os.path`

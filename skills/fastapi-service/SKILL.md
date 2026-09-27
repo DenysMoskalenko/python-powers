@@ -7,7 +7,7 @@ description: Use when adding or changing a FastAPI endpoint (`routes.py`, `servi
 
 Patterns for building FastAPI services where services own business logic directly. No repository layer — keep it simple.
 
-> Requires Python 3.13+, FastAPI, Pydantic, pydantic-settings.
+> Requires Python 3.14+, FastAPI, Pydantic, pydantic-settings.
 > Examples use `app/` as the top-level package. Substitute your package name if different.
 
 **Related**: `python-code-style`, `python-testing`, `postgres-database`, `ai-agents`, `project-scaffolding`.
@@ -97,7 +97,7 @@ from app.core.exceptions import AlreadyExistError, NotFoundError
 
 
 class AuthorService:
-    def __init__(self, session: Annotated[AsyncSession, Depends(get_session)]) -> None:
+    def __init__(self, session: Annotated[AsyncSession, Depends(get_session, scope='function')]) -> None:
         self._session = session
 
     async def get_author_by_id(self, author_id: int) -> Author:

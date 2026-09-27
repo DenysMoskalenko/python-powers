@@ -2,7 +2,7 @@
 
 Reusable engineering skills for AI-assisted Python development.
 
-This repository is a shared playbook for humans and coding agents building modern Python services. It captures practical conventions for Python 3.13+, FastAPI, PostgreSQL, testing, tooling, and pydantic-ai so teams can make fewer repeated decisions and get more predictable AI-assisted changes.
+This repository is a shared playbook for humans and coding agents building modern Python services. It captures practical conventions for Python 3.14+, FastAPI, PostgreSQL, testing, tooling, and pydantic-ai so teams can make fewer repeated decisions and get more predictable AI-assisted changes.
 
 The main artifact is the [`skills/`](skills/) directory. Each skill is a focused Markdown guide that an agent can load when working in that domain.
 
@@ -10,7 +10,7 @@ The main artifact is the [`skills/`](skills/) directory. Each skill is a focused
 
 | Skill | Use it for |
 | --- | --- |
-| [`python-code-style`](skills/python-code-style/SKILL.md) | Python 3.13+ style, typing, naming, dependency injection, model-first data design, and general architecture rules. |
+| [`python-code-style`](skills/python-code-style/SKILL.md) | Python 3.14+ style, typing, naming, dependency injection, model-first data design, and general architecture rules. |
 | [`python-tooling`](skills/python-tooling/SKILL.md) | uv, ruff, ty, complexipy, pytest configuration, prek hooks, optional Makefile wrappers, and CI quality jobs. |
 | [`python-testing`](skills/python-testing/SKILL.md) | FastAPI API-level testing, pytest fixtures, polyfactory factories, dependency overrides, and assertion patterns. |
 | [`fastapi-service`](skills/fastapi-service/SKILL.md) | FastAPI routes, services, schemas, settings, exception handling, and dependency wiring without a repository layer. |

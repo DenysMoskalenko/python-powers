@@ -6,7 +6,7 @@ This repository is the shared AI-assisted engineering playbook.
 
 The main artifact is the `skills/` tree:
 
-- `python-code-style` - Python 3.13+ architecture and style rules
+- `python-code-style` - Python 3.14+ architecture and style rules
 - `python-tooling` - uv, ruff, ty, pytest, prek hooks, and CI patterns
 - `python-testing` - FastAPI testing patterns and fixtures
 - `fastapi-service` - FastAPI route, service, schema, config, and exception patterns
@@ -97,7 +97,7 @@ For every change:
 
 For Python examples inside skills:
 
-- Keep examples compatible with Python 3.13+.
+- Keep examples compatible with Python 3.14+.
 - Follow the local `python-code-style` skill.
 - Prefer examples that are realistic enough to copy into a service with minimal edits.
 
