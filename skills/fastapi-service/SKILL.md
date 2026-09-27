@@ -7,7 +7,7 @@ description: Use when adding or changing a FastAPI endpoint (`routes.py`, `servi
 
 Patterns for building FastAPI services where services own business logic directly. No repository layer — keep it simple.
 
-> Requires Python 3.14+, FastAPI 0.121+, Pydantic, pydantic-settings.
+> Requires Python 3.14+, FastAPI, Pydantic, pydantic-settings.
 > Examples use `app/` as the top-level package. Substitute your package name if different.
 
 **Related**: `python-code-style`, `python-testing`, `postgres-database`, `ai-agents`, `project-scaffolding`.

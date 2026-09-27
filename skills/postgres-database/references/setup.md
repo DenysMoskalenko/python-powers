@@ -81,7 +81,7 @@ async def open_db_session() -> AsyncGenerator[AsyncSession, None]:
 
 ## Dependency lifetime
 
-For ordinary CRUD, inject `Annotated[AsyncSession, Depends(get_session, scope='function')]` (FastAPI 0.121+). Teardown, including `commit()`, finishes after the endpoint function returns and before the response is sent, so a commit failure can still produce an error response.
+For ordinary CRUD, inject `Annotated[AsyncSession, Depends(get_session, scope='function')]`. Teardown, including `commit()`, finishes after the endpoint function returns and before the response is sent, so a commit failure can still produce an error response.
 
 Keep the default `use_cache=True`: nested services using the same `get_session` and scope share one session per request. `function` refers to the endpoint's lifetime, not each service constructor. Use the same scope consistently; mixing `function` and `request` creates separate dependency cache entries and sessions.
 

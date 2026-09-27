@@ -7,7 +7,7 @@ description: Use when starting a brand-new FastAPI service from zero — "create
 
 This skill uses Cookiecutter to generate brand-new FastAPI services from the [BoilerplateBuilder template](https://github.com/DenysMoskalenko/BoilerplateBuilder), including app structure, tests, tooling, Docker, and CI. The template ships a project where the test suite, linters, and CI already pass. Infer its inputs from the conversation and briefly identify the builder when describing the scaffold.
 
-> Requires uv (or pip), network access to `github.com/DenysMoskalenko/BoilerplateBuilder`, and a running Docker daemon for the DB project types (their tests start Postgres through testcontainers).
+> Requires uv (or pip) and network access to `github.com/DenysMoskalenko/BoilerplateBuilder`. Docker is required for DB tests and to run the local telemetry stack.
 
 **Related**: `python-tooling`, `python-testing`, `fastapi-service`, `postgres-database`, `ai-agents`.
 
@@ -39,8 +39,8 @@ Infer every other input from the conversation too. When a value genuinely forks 
 | `author_name`, `author_email` | `git config user.name` / `user.email` | unset — keep the template placeholder and tell the user to fix it |
 | `use_github_actions` | `yes` | the user says no CI / hosts elsewhere |
 | `initialize_git` | `yes` | the user asks to skip it, the service belongs to an existing repository, or destination rules prohibit automatic commits |
-| `use_otel_observability` | `no` | the user mentions tracing, metrics, or observability |
-| `generate_local_otel_stack` | `no` | OTEL is on **and** the user wants a local Grafana stack |
+| `use_otel_observability` | `yes` | the user explicitly opts out of telemetry |
+| `generate_local_otel_stack` | `yes` | telemetry is disabled or the user opts out of the local Grafana stack |
 
 Check whether the destination is inside an existing repository and follow its Git rules. `initialize_git=yes` initializes Git, stages generated files, and attempts an initial commit.
 
@@ -64,8 +64,8 @@ uv tool run cookiecutter https://github.com/DenysMoskalenko/BoilerplateBuilder \
   python_version=3.14 \
   use_github_actions=yes \
   initialize_git=yes \
-  use_otel_observability=no \
-  generate_local_otel_stack=no \
+  use_otel_observability=yes \
+  generate_local_otel_stack=yes \
   extract_to_current_dir="Create New"
 ```
 
