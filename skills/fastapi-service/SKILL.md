@@ -29,7 +29,7 @@ Package-by-feature: each module under `app/domains/` is one self-contained verti
 ```text
 app/
   main.py                  # create_app() — FastAPI app factory
-  router.py                # create_router() — aggregates module routers
+  router.py                # setup_routers() — includes module routers into the app
   domains/
     <module>/              # one vertical slice per module
       routes.py            # thin HTTP handlers
@@ -242,7 +242,7 @@ Register handlers in `create_app()`; their order relative to routers and middlew
 
 ## Setup
 
-See `references/setup.md` for one-time project wiring: `pydantic-settings` configuration (`Settings` + `lru_cache`d `get_settings`), the `create_router()` aggregator (business modules under `/v1`, operational endpoints unversioned), and the `create_app()` factory.
+See `references/setup.md` for one-time project wiring: `pydantic-settings` configuration (`Settings` + `lru_cache`d `get_settings`), `setup_routers()` (business modules under `/v1`, operational endpoints unversioned), and the `create_app()` factory.
 
 ## Red Flags — STOP
 
@@ -258,6 +258,7 @@ These mean the service boundary is drifting. Stop and apply the named rule:
 | Put request/response schemas outside their module | Schemas — colocate schemas in the module's `schemas.py` |
 | Use bare `str` for `sort_by` or other constrained query fields | Schemas — use `Literal[...]` for local constrained values |
 | Return ORM models without a response schema | Schemas — response models use `ConfigDict(from_attributes=True)` |
+| Nest routers through an intermediate `APIRouter` | Setup — include every module router into the app directly |
 
 ## Gotchas
 
