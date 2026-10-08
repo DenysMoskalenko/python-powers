@@ -1,13 +1,13 @@
 # FastAPI Service Setup
 
-Reference for one-time project wiring — written once at bootstrap, rarely touched afterward. Load this when setting up a service's configuration, router aggregation, or app factory.
+Reference for one-time project wiring — written once at bootstrap, rarely touched afterward. Load this when setting up a service's configuration, router wiring, or app factory.
 
 Examples use `app/` as the top-level package — substitute your package name if different.
 
 ## Contents
 
 - `pydantic-settings` configuration (`Settings` + `lru_cache`d `get_settings`)
-- `create_router()` — aggregates the module routers
+- `setup_routers()` — includes the module routers into the app
 - `create_app()` — the app factory
 
 ## Configuration
@@ -43,36 +43,31 @@ def get_settings() -> Settings:
 
 ## Router
 
-`app/router.py` aggregates the module routers — business modules under `/v1`, operational endpoints (health checks) unversioned:
+`app/router.py` includes every module router into the app directly — business modules under `/v1`, operational endpoints (health checks) unversioned. Never nest routers through an intermediate `APIRouter`: every nested `include_router` level keeps another copy of each route and its `Depends()` tree, so nesting multiplies route memory per worker for an identical OpenAPI schema. Inclusion order is matching order — a router whose literal paths another router's path parameter would match goes first.
 
 ```python
-from fastapi import APIRouter
+from fastapi import FastAPI
 
 from app.domains.authors.routes import router as authors_router
 from app.domains.books.routes import router as books_router
 from app.domains.health_checks.routes import router as health_checks_router
 
 
-def create_router() -> APIRouter:
-    router_v1 = APIRouter(prefix='/v1')
-    router_v1.include_router(authors_router)
-    router_v1.include_router(books_router)
-
-    router = APIRouter()
-    router.include_router(health_checks_router)  # unversioned — operational, not a v1 API contract
-    router.include_router(router_v1)
-    return router
+def setup_routers(app: FastAPI) -> None:
+    app.include_router(health_checks_router)  # unversioned — operational, not a v1 API contract
+    app.include_router(authors_router, prefix='/v1')
+    app.include_router(books_router, prefix='/v1')
 ```
 
 ## App Factory
 
-`create_app()` mounts the aggregated router and registers exception handlers (their order relative to routers and middleware does not matter):
+`create_app()` wires the routers and registers exception handlers (their order relative to routers and middleware does not matter):
 
 ```python
 def create_app() -> FastAPI:
     settings = get_settings()
     _app = FastAPI(title=settings.PROJECT_NAME, version=settings.PROJECT_VERSION, lifespan=lifespan)
-    _app.include_router(create_router())
+    setup_routers(_app)
     add_pagination(_app)
     include_exception_handlers(_app)
     return _app

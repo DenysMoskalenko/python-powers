@@ -127,7 +127,7 @@ Code should be readable without comments. Achieve this through:
 - Workarounds: what's being worked around and why
 
 ```python
-router.include_router(health_checks_router)  # unversioned — operational, not a v1 API contract
+app.include_router(health_checks_router)  # unversioned — operational, not a v1 API contract
 ```
 
 ## Break Down Complexity
