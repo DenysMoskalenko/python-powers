@@ -1,13 +1,13 @@
 ---
 name: python-tooling
-description: Use when bootstrapping or changing Python tooling in `pyproject.toml` or `.pre-commit-config.yaml`, or deciding what to run after a code change — uv dependency management, ruff formatting/linting, ty type checking, complexipy, pytest and pytest-asyncio settings, the coverage gate, prek hooks, optional Makefile wrappers, CI quality jobs, and `DeprecationWarning` / `filterwarnings` policy.
+description: Use when bootstrapping or changing Python tooling in `pyproject.toml` or `.pre-commit-config.yaml`, or deciding what to run after a code change — uv dependency management and `uv audit` vulnerability checks, ruff formatting/linting, ty type checking, complexipy, pytest and pytest-asyncio settings, the coverage gate, prek hooks, optional Makefile wrappers, CI quality jobs, and `DeprecationWarning` / `filterwarnings` policy.
 ---
 
 # Python Tooling
 
 Recommended baseline for modern Python projects. Prefer `pyproject.toml` for tool configuration when the tool supports it, keep tool-specific files when it does not (for example `.pre-commit-config.yaml`), and expose common workflows either through direct `uv run ...` commands or optional `make` wrappers. Adapt command names to the repo instead of assuming one fixed Makefile surface.
 
-> Requires Python 3.14+, uv, ruff, ty.
+> Requires Python 3.14+, uv 0.13.5+, ruff, ty.
 
 **Related**: `python-code-style`, `python-testing`, `project-scaffolding`.
 
@@ -38,6 +38,14 @@ uv run alembic upgrade head
 ```
 
 This ensures the correct virtualenv and dependencies are used regardless of shell activation state.
+
+### Auditing Dependencies
+
+```bash
+uv audit --locked
+```
+
+Run it after adding or upgrading a dependency; the pre-commit hook and CI run it too. It checks every locked package, dev group included, against OSV advisories and exits non-zero on a finding; `--locked` fails instead of rewriting `uv.lock`. Fix a finding by moving the package to its "Fixed in" version: raise its pin in `pyproject.toml`, or run `uv lock --upgrade-package <package>` when the constraint already allows the fix; when a parent caps a transitive package below the fix, upgrade the parent. For an advisory with no fix yet, list its ID under `[tool.uv.audit] ignore-until-fixed` in `pyproject.toml`, which the hook and CI both read, so it resurfaces once a fix ships; never skip the hook. Load `references/setup.md` for the matching `[tool.uv]` settings.
 
 ## ruff — Formatting and Linting
 
@@ -120,7 +128,8 @@ The rule: a clean output is a feature. If you cannot make it clean, explain why,
 The hook runner is `prek` (`uv run prek install`, `uv run prek run --all-files`), not the
 `pre-commit` package; it reads the same `.pre-commit-config.yaml`. Hooks should run project
 tools from the project's uv environment. Keep ruff and ty as `repo: local` hooks using
-`uv run`; do not use `astral-sh/ruff-pre-commit` for the baseline. Load `references/setup.md`
+`uv run`; do not use `astral-sh/ruff-pre-commit` for the baseline. A local `uv audit --locked`
+hook runs only when `uv.lock`, `pyproject.toml`, or `uv.toml` changes. Load `references/setup.md`
 for the full `.pre-commit-config.yaml` snippet.
 
 ## Optional Makefile Workflow
@@ -152,8 +161,11 @@ A minimal CI pipeline usually runs:
 
 1. **Lint job**: `ruff format --check` + `ruff check` (CI checks, doesn't fix) + `ty check` + `complexipy`
 2. **Test job**: `pytest` (after lint passes)
+3. **Audit job**: `uv sync --locked` with `UV_MALWARE_CHECK=1`, then `uv audit --locked`
 
 CI checks formatting even though hooks format locally: a hook can be skipped with `--no-verify` or never installed in a clone. The CI lint job should use the direct commands; `make lint-no-format` runs only `ruff check`.
+
+The malware check compares installed packages against OSV malware advisories and fails closed when OSV is unreachable, so set `UV_MALWARE_CHECK` only in the CI audit job, not in local runs or Docker builds.
 
 ## Gotchas
 
@@ -163,3 +175,6 @@ CI checks formatting even though hooks format locally: a hook can be skipped wit
 - ty is different from mypy — some type: ignore comments may need `# type: ignore[ty:...]` syntax
 - Treat `make` targets as optional convenience wrappers, not as part of Python itself — some projects expose only direct `uv run ...` commands
 - If a tool requires its own config file, keep it there instead of forcing everything into `pyproject.toml`
+- `uv audit` queries OSV over the network; offline it errors instead of passing
+- `no-build = true` has no per-package opt-out: `no-build-package` adds packages to the block list, it does not exempt them. A dependency that ships only a source distribution cannot install until it publishes a wheel or the project drops `no-build`
+- A uv too old to know `preview-features` warns `unknown field` and ignores the whole `[tool.uv]` table, so `required-version` and `no-build` stop applying — upgrade uv instead of deleting the key
