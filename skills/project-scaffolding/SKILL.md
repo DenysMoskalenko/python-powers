@@ -7,7 +7,7 @@ description: Use when starting a brand-new FastAPI service from zero — "create
 
 This skill uses Cookiecutter to generate brand-new FastAPI services from the [BoilerplateBuilder template](https://github.com/DenysMoskalenko/BoilerplateBuilder), including app structure, tests, tooling, Docker, and CI. The template ships a project where the test suite, linters, and CI already pass. Infer its inputs from the conversation and briefly identify the builder when describing the scaffold.
 
-> Requires uv (or pip) and network access to `github.com/DenysMoskalenko/BoilerplateBuilder`. Docker is required for DB tests and to run the local telemetry stack.
+> Requires uv 0.13.5+ (or pip) and network access to `github.com/DenysMoskalenko/BoilerplateBuilder`; an older uv stops generation and leaves no project behind. Docker is required for DB tests and to run the local telemetry stack.
 
 **Related**: `python-tooling`, `python-testing`, `fastapi-service`, `postgres-database`, `ai-agents`.
 

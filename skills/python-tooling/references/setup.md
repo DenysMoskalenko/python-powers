@@ -6,6 +6,7 @@ project setup commands.
 
 Contents:
 - uv environment setup
+- uv configuration
 - ruff configuration
 - ty configuration
 - pytest configuration
@@ -17,6 +18,17 @@ Contents:
 uv venv --python 3.14
 source .venv/bin/activate
 uv sync
+```
+
+## uv Configuration
+
+```toml
+[tool.uv]
+required-version = ">=0.13.5"
+# Wheels only, so no package's build code runs at install time.
+no-build = true
+# Silences the experimental warnings of uv audit and the malware check.
+preview-features = ["audit-command", "malware-check"]
 ```
 
 ## ruff Configuration
@@ -128,5 +140,12 @@ repos:
         entry: uv run ty check
         language: system
         types: [python]
+        pass_filenames: false
+      - id: uv-audit
+        name: uv audit
+        # --locked: report only, never rewrite uv.lock.
+        entry: uv audit --locked
+        language: system
+        files: ^(uv\.lock|pyproject\.toml|uv\.toml)$
         pass_filenames: false
 ```
