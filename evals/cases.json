@@ -486,7 +486,6 @@
   },
   {
     "name": "beh-scaffold-command",
-    "note": "The --checkout SHA is duplicated from skills/project-scaffolding/SKILL.md; bump both together.",
     "tags": [
       "behavior",
       "project-scaffolding"
