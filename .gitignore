@@ -16,5 +16,5 @@ __pycache__/
 tmp/
 /.cursor/
 
-# Eval harness and its output (kept local, never committed)
-evals/
+# Eval run output: raw transcripts with local paths, megabytes per run
+evals/results/

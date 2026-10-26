@@ -1,0 +1,19 @@
+[project]
+name = "app"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "pydantic-settings",
+    "sqlalchemy[asyncio]",
+    "alembic",
+    "psycopg[binary]",
+    "fastapi-pagination",
+    "pydantic-ai-slim[openai,anthropic]",
+    "requests",
+]
+
+[dependency-groups]
+dev = ["pytest", "pytest-asyncio", "polyfactory", "httpx2", "testcontainers", "ruff", "ty"]
