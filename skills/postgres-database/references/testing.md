@@ -20,6 +20,7 @@ import os
 from collections.abc import Generator
 
 import pytest
+# testcontainers 4.15+ path; the old testcontainers.postgres import raises DeprecationWarning
 from testcontainers.community.postgres import PostgresContainer
 
 
