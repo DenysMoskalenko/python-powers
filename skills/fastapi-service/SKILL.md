@@ -7,7 +7,7 @@ description: Use when adding or changing a FastAPI endpoint (`routes.py`, `servi
 
 Patterns for building FastAPI services where services own business logic directly. No repository layer — keep it simple.
 
-> Requires Python 3.14+, FastAPI, Pydantic, pydantic-settings.
+> Requires Python 3.14+, FastAPI 0.157+, Pydantic, pydantic-settings.
 > Examples use `app/` as the top-level package. Substitute your package name if different.
 
 **Related**: `python-code-style`, `python-testing`, `postgres-database`, `ai-agents`, `project-scaffolding`.
@@ -210,7 +210,7 @@ Pattern:
 - `EntityUpdate` — input for update (often same as Create)
 - `Entity` — response model with `id`, timestamps, `from_attributes=True`
 - `EntityListFilters` — query params for filtering
-- `EntityListSorting` — inherits `BaseListSorting`, constrains `sort_by` with `Literal`
+- `EntityListSorting` — inherits `BaseListSorting`, constrains `sort_by` with `Literal`; make the base frozen (`ConfigDict(frozen=True)`) so ty lets subclasses narrow its `sort_by: str`
 - Always use `Field()` with `min_length`, `max_length`, `examples`, `description`
 
 ## Exceptions
@@ -263,4 +263,4 @@ These mean the service boundary is drifting. Stop and apply the named rule:
 ## Gotchas
 
 - `Annotated[Service, Depends()]` with empty `Depends()` triggers FastAPI auto-injection of the service's own dependencies
-- Filter/sorting schemas as `Depends()` parameters parse query strings into typed models automatically — except a `list[...]` field (`ids`), which `Depends()` reads from the request body; take such a filters schema as `Annotated[AuthorListFilters, Query()]` (one per route, no bare scalar query parameter beside it, else 422)
+- Filter/sorting schemas as `Depends()` parameters parse query strings into typed models automatically — except a `list[...]` field (`ids`), which `Depends()` reads from the request body; take such a filters schema as `Annotated[AuthorListFilters, Query()]`

@@ -20,7 +20,7 @@ import os
 from collections.abc import Generator
 
 import pytest
-from testcontainers.postgres import PostgresContainer
+from testcontainers.community.postgres import PostgresContainer
 
 
 @pytest.fixture(scope='session', autouse=True)
