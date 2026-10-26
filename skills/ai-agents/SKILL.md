@@ -7,7 +7,7 @@ description: Use when adding an LLM, assistant, or chatbot endpoint to a FastAPI
 
 Patterns for building pydantic-ai agents integrated into FastAPI services. An agent is a module like any other (`app/domains/<feature>/`) — only its internals (builder, tools, prompt, agent/tool schemas) are agent-specific.
 
-> Requires Python 3.14+, pydantic-ai, FastAPI.
+> Requires Python 3.14+, pydantic-ai 2.41+, FastAPI.
 > Examples use `app/` as the top-level package (the reference project's convention). Substitute your package name if different.
 
 **Related**: `python-code-style`, `fastapi-service`, `python-testing`, `project-scaffolding`.

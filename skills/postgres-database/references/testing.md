@@ -20,7 +20,8 @@ import os
 from collections.abc import Generator
 
 import pytest
-from testcontainers.postgres import PostgresContainer
+# testcontainers 4.15+ path; the old testcontainers.postgres import raises DeprecationWarning
+from testcontainers.community.postgres import PostgresContainer
 
 
 @pytest.fixture(scope='session', autouse=True)
