@@ -259,6 +259,7 @@ These mean the service boundary is drifting. Stop and apply the named rule:
 | Use bare `str` for `sort_by` or other constrained query fields | Schemas — use `Literal[...]` for local constrained values |
 | Return ORM models without a response schema | Schemas — response models use `ConfigDict(from_attributes=True)` |
 | Nest routers through an intermediate `APIRouter` | Setup — include every module router into the app directly |
+| Add an integration's fields to the root `Settings`, or declare a password, token, or API key as `str` | Setup — one settings class per integration with its own `env_prefix`, inheriting `_EnvSettings`; every secret is `SecretStr` |
 
 ## Gotchas
 

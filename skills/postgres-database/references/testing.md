@@ -32,18 +32,18 @@ def _postgres_container() -> Generator[PostgresContainer, None, None]:
         password='test',  # noqa: S106
         dbname='TestDB',
     ) as postgres:
-        host = postgres.get_container_host_ip()
-        port = postgres.get_exposed_port(5432)
-        os.environ['DATABASE_URL'] = (
-            f'postgresql+psycopg://{postgres.username}:{postgres.password}@{host}:{port}/{postgres.dbname}'
-        )
+        os.environ['DATABASE_HOST'] = postgres.get_container_host_ip()
+        os.environ['DATABASE_PORT'] = str(postgres.get_exposed_port(5432))
+        os.environ['DATABASE_USER'] = postgres.username
+        os.environ['DATABASE_PASSWORD'] = postgres.password
+        os.environ['DATABASE_NAME'] = postgres.dbname
         get_settings.cache_clear()
         async_engine.cache_clear()
         async_session_factory.cache_clear()
         yield postgres
 ```
 
-Clear all `lru_cache`d functions after setting the test `DATABASE_URL` so the app picks up the test database.
+Clear all `lru_cache`d functions after setting the test `DATABASE_*` variables so the app picks up the test database.
 
 ## Engine fixture with migrations
 
@@ -56,10 +56,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 @pytest.fixture(scope='session')
 async def _engine(_postgres_container: PostgresContainer) -> AsyncIterable[AsyncEngine]:
-    settings = get_settings()
-    alembic_config = get_alembic_config(settings.DATABASE_URL)
+    alembic_config = get_alembic_config()
 
-    engine = create_async_engine(settings.DATABASE_URL.unicode_string())
+    engine = create_async_engine(get_settings().DATABASE.url.unicode_string())
     async with engine.begin() as connection:
         await connection.run_sync(lambda conn: downgrade(alembic_config, 'base'))
         await connection.run_sync(lambda conn: upgrade(alembic_config, 'head'))
@@ -120,5 +119,5 @@ Disable startup migrations in tests — the engine fixture handles them.
 ## Gotchas
 
 - Always include the `session` fixture in test signatures even if the test only calls HTTP; it installs the rollback-bound session override.
-- Clear cached settings, engine, and session factory after writing `DATABASE_URL`.
+- Clear cached settings, engine, and session factory after writing the `DATABASE_*` variables.
 - Keep Alembic migrations as the source of truth for test schema creation; do not call `Base.metadata.create_all()`.

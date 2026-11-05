@@ -648,7 +648,7 @@
     "forbid": [
       "python-testing"
     ],
-    "prompt": "Our integration tests need a real Postgres. Set up the session-scoped testcontainers fixture and make the app read that container's DATABASE_URL."
+    "prompt": "Our integration tests need a real Postgres. Set up the session-scoped testcontainers fixture and make the app read that container's connection settings."
   },
   {
     "name": "trig-nearmiss-schemas",
