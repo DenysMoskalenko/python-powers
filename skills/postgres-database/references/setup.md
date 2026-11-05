@@ -6,10 +6,54 @@ Examples use `app/` as the top-level package — substitute your package name if
 
 ## Contents
 
+- `DatabaseSettings`: connection parts, timeouts, and the composed URL
 - `Base` / `DeclarativeBase` with Alembic naming convention
 - `lru_cache`d async engine and session factory
 - `get_session` (FastAPI dependency) and `open_db_session` (context manager) providers
 - Dependency lifetime for CRUD and streaming responses
+
+## Connection settings
+
+Configure the connection as parts, never as one `DATABASE_URL`, so the password stays a `SecretStr`. `_EnvSettings` is the service's shared settings base (`env_file='.env'`, `env_ignore_empty=True`, `extra='ignore'`, `frozen=True`, `hide_input_in_errors=True`). Nest the class into `Settings` as `DATABASE: DatabaseSettings = Field(default_factory=DatabaseSettings)`:
+
+```python
+from functools import cached_property
+from urllib.parse import quote
+
+from pydantic import Field, PostgresDsn, SecretStr, ValidationError
+from pydantic_settings import SettingsConfigDict
+
+
+class DatabaseSettings(_EnvSettings):
+    model_config = SettingsConfigDict(env_prefix='DATABASE_')
+
+    host: str
+    port: int = Field(default=5432, ge=1, le=65535)
+    user: str
+    password: SecretStr
+    name: str
+    connect_timeout_seconds: int = Field(default=5, ge=1)
+    readiness_timeout_seconds: float = Field(default=5.0, gt=0)
+
+    @cached_property
+    def url(self) -> PostgresDsn:
+        try:
+            return PostgresDsn.build(
+                scheme='postgresql+psycopg',
+                username=quote(self.user, safe=''),
+                password=quote(self.password.get_secret_value(), safe=''),
+                host=self.host,
+                port=self.port,
+                path=self.name,
+            )
+        except ValidationError:  # its message prints the whole URL, password included
+            raise ValueError('DATABASE_HOST is not a valid URL host') from None
+```
+
+- Quote both credentials: a raw `/`, `?` or `#` fails the build, and a raw `%40` decodes to `@`
+- `hide_input_in_errors` does not reach `build`, so catch its `ValidationError` or the error prints the password
+- `url` keeps the plaintext in `__dict__`: never print `vars(settings)`, and `model_copy(update=...)` keeps the old URL
+- TLS and other libpq options have no field: set `PGSSLMODE=verify-full` in the process environment, because libpq never sees `.env`
 
 ## DeclarativeBase
 
@@ -47,8 +91,12 @@ from app.core.config import get_settings
 
 @lru_cache
 def async_engine() -> AsyncEngine:
-    settings = get_settings()
-    return create_async_engine(settings.DATABASE_URL.unicode_string(), pool_pre_ping=True)
+    database = get_settings().DATABASE
+    return create_async_engine(
+        database.url.unicode_string(),
+        pool_pre_ping=True,
+        connect_args={'connect_timeout': database.connect_timeout_seconds},
+    )
 
 
 @lru_cache
