@@ -17,65 +17,42 @@ Examples use `app/` as the top-level package — substitute your package name if
 Configure the connection as parts, never as one `DATABASE_URL`, so the password stays a `SecretStr`. `_EnvSettings` is the service's shared settings base (`env_file='.env'`, `env_ignore_empty=True`, `extra='ignore'`, `frozen=True`, `hide_input_in_errors=True`). Nest the class into `Settings` as `DATABASE: DatabaseSettings = Field(default_factory=DatabaseSettings)`:
 
 ```python
-from ipaddress import ip_address
-import re
+from functools import cached_property
 from urllib.parse import quote
 
-from pydantic import Field, field_validator, PostgresDsn, SecretStr
+from pydantic import Field, PostgresDsn, SecretStr, ValidationError
 from pydantic_settings import SettingsConfigDict
-
-# Non-ASCII is excluded on purpose: `PostgresDsn.build` percent-encodes it and libpq then resolves it literally.
-_BARE_SEGMENT = re.compile(r'[A-Za-z0-9._-]+')
-
-
-def _is_bare_segment(value: str) -> bool:
-    """URLs spell IPv6 as `[addr]`, so brackets are the one place a colon may appear."""
-    if value.startswith('[') and value.endswith(']'):
-        try:
-            return '%' not in value and ip_address(value[1:-1]).version == 6
-        except ValueError:
-            return False
-    return _BARE_SEGMENT.fullmatch(value) is not None
 
 
 class DatabaseSettings(_EnvSettings):
     model_config = SettingsConfigDict(env_prefix='DATABASE_')
 
-    # No default: a pod missing it must fail at startup, not boot against itself.
     host: str
     port: int = Field(default=5432, ge=1, le=65535)
     user: str
     password: SecretStr
     name: str
-    # Without both, a blackholed host leaves `/health/ready` on kernel TCP retries instead of answering 503.
-    # A dead pooled connection adds up to 10s: psycopg finishes its own cancel before raising.
     connect_timeout_seconds: int = Field(default=5, ge=1)
     readiness_timeout_seconds: float = Field(default=5.0, gt=0)
-    # Server-side, on every statement: nothing else bounds a query that hangs after the connection is up.
-    statement_timeout_seconds: int = Field(default=10, ge=1)
 
-    @property
+    @cached_property
     def url(self) -> PostgresDsn:
-        """`build` leaves `@`, `/`, `:` and `%` in a credential raw, where they read as URL structure."""
-        return PostgresDsn.build(
-            scheme='postgresql+psycopg',  # psycopg2, which a bare `postgresql://` selects, is not installed.
-            username=quote(self.user, safe=''),
-            password=quote(self.password.get_secret_value(), safe=''),
-            host=self.host,
-            port=self.port,
-            path=self.name,
-        )
-
-    @field_validator('host', 'name')
-    @classmethod
-    def validate_bare_segment(cls, value: str) -> str:
-        """Neither is quoted, so `h@other` or `db?sslmode=disable` would compose a URL that means something else."""
-        if not _is_bare_segment(value):
-            raise ValueError('must be letters, digits, ".", "_" or "-" only, or a bracketed IPv6 literal')
-        return value
+        try:
+            return PostgresDsn.build(
+                scheme='postgresql+psycopg',
+                username=quote(self.user, safe=''),
+                password=quote(self.password.get_secret_value(), safe=''),
+                host=self.host,
+                port=self.port,
+                path=self.name,
+            )
+        except ValidationError:  # its message prints the whole URL, password included
+            raise ValueError('DATABASE_HOST is not a valid URL host') from None
 ```
 
-- `url` is a `@property`, not `@cached_property`: a cached value keeps the plaintext in `__dict__` and goes stale after `model_copy`
+- Quote both credentials: a raw `/`, `?` or `#` fails the build, and a raw `%40` decodes to `@`
+- `hide_input_in_errors` does not reach `build`, so catch its `ValidationError` or the error prints the password
+- `url` keeps the plaintext in `__dict__`: never print `vars(settings)`, and `model_copy(update=...)` keeps the old URL
 - TLS and other libpq options have no field: set `PGSSLMODE=verify-full` in the process environment, because libpq never sees `.env`
 
 ## DeclarativeBase
@@ -118,10 +95,7 @@ def async_engine() -> AsyncEngine:
     return create_async_engine(
         database.url.unicode_string(),
         pool_pre_ping=True,
-        connect_args={
-            'connect_timeout': database.connect_timeout_seconds,
-            'options': f'-c statement_timeout={database.statement_timeout_seconds}s',
-        },
+        connect_args={'connect_timeout': database.connect_timeout_seconds},
     )
 
 
