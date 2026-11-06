@@ -45,7 +45,7 @@ This ensures the correct virtualenv and dependencies are used regardless of shel
 uv audit --locked
 ```
 
-Run it after adding or upgrading a dependency; the pre-commit hook and CI run it too. It checks every locked package, dev group included, against OSV advisories and exits non-zero on a finding; `--locked` fails instead of rewriting `uv.lock`. Fix a finding by moving the package to its "Fixed in" version: raise its pin in `pyproject.toml`, or run `uv lock --upgrade-package <package>` when the constraint already allows the fix; when a parent caps a transitive package below the fix, upgrade the parent. For an advisory with no fix yet, list its ID under `[tool.uv.audit] ignore-until-fixed` in `pyproject.toml`, which the hook and CI both read, so it resurfaces once a fix ships; never skip the hook. Load `references/setup.md` for the matching `[tool.uv]` settings.
+Run it after adding or upgrading a dependency; the pre-commit hook and CI run it too. It checks every locked package, dev group included, against OSV advisories and exits non-zero on a finding; `--locked` fails instead of rewriting `uv.lock`. Fix a finding by moving the package to its "Fixed in" version: raise its pin in `pyproject.toml`, or run `uv lock --upgrade-package <package>` when the constraint already allows the fix; when a parent caps a transitive package below the fix, upgrade the parent. A fix younger than the `exclude-newer` cooldown stays filtered until you set `<package> = false` under `[tool.uv.exclude-newer-package]` for it and any package released in lockstep; remove the entry once the release ages past the cooldown. For an advisory with no fix yet, list its ID under `[tool.uv.audit] ignore-until-fixed` in `pyproject.toml`, which the hook and CI both read, so it resurfaces once a fix ships; never skip the hook. Load `references/setup.md` for the matching `[tool.uv]` settings.
 
 ## ruff — Formatting and Linting
 
@@ -177,4 +177,6 @@ The malware check compares installed packages against OSV malware advisories and
 - If a tool requires its own config file, keep it there instead of forcing everything into `pyproject.toml`
 - `uv audit` queries OSV over the network; offline it errors instead of passing
 - `no-build = true` has no per-package opt-out: `no-build-package` adds packages to the block list, it does not exempt them. A dependency that ships only a source distribution cannot install until it publishes a wheel or the project drops `no-build`
+- Adding `exclude-newer` to an existing project makes `--locked` fail until `uv lock` runs, and that run downgrades anything younger than the cooldown. Afterwards `uv.lock` stores the span, so it stays valid as time passes and the cutoff moves only on a new resolution
+- `exclude-newer` treats a file without PEP 700 `upload-time` as unavailable, which hits private indexes; exempt those packages with `<package> = false` under `[tool.uv.exclude-newer-package]`
 - A uv too old to know `preview-features` warns `unknown field` and ignores the whole `[tool.uv]` table, so `required-version` and `no-build` stop applying — upgrade uv instead of deleting the key
