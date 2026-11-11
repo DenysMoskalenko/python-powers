@@ -42,7 +42,7 @@ class TestCatalogAssistantProviderErrors:
         with test_catalog_assistant_agent.override(model=build_raising_model(exc)):
             response = await client.post(
                 '/v1/assistants/conversations',
-                json={'model': 'primary', 'question': 'How many matching items do we have?'},
+                json={'model': 'gpt-6.1-sol', 'question': 'How many matching items do we have?'},
             )
         assert response.status_code == 429
 
@@ -51,7 +51,7 @@ class TestCatalogAssistantProviderErrors:
         with test_catalog_assistant_agent.override(model=build_raising_model(exc)):
             response = await client.post(
                 '/v1/assistants/conversations',
-                json={'model': 'primary', 'question': 'How many matching items do we have?'},
+                json={'model': 'gpt-6.1-sol', 'question': 'How many matching items do we have?'},
             )
         assert response.status_code == 503
 ```

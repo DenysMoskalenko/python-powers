@@ -11,3 +11,12 @@ repos:
       - id: check-toml
       - id: check-yaml
       - id: check-merge-conflict
+
+  - repo: local
+    hooks:
+      - id: check-skills
+        name: check skills
+        entry: uv run evals/check_skills.py
+        language: system
+        files: ^(skills/|evals/check_skills\.py|\.claude-plugin/|\.codex-plugin/|\.cursor-plugin/|\.agents/plugins/)
+        pass_filenames: false

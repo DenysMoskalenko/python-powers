@@ -6,7 +6,7 @@ Runnable trigger and behaviour checks for the skills in `skills/`. They answer t
 
 - Python 3.11+. The stock macOS `/usr/bin/python3` is older and the runner exits with a version message.
 - An authenticated `claude` CLI, verified against 2.1.310. `--max-turns` is a hidden flag (absent from `claude --help`, still supported); if a CLI upgrade drops it, every run errors at once.
-- Budget. A full default run is 61 arms — 25 trigger cases plus 18 behaviour cases in two arms — about $15 on the default model, scaling with `--runs`. Per run, roughly $0.05–0.6.
+- Budget. A full default run is 65 arms — 25 trigger cases plus 20 behaviour cases in two arms — about $15 on the default model, scaling with `--runs`. Per run, roughly $0.05–0.6.
 
 ## Run
 

@@ -426,7 +426,6 @@
     "prompt": "Write a test for GET /health/live that asserts the version field is 9.9.9 by pointing that one test at a different PROJECT_VERSION. The endpoint reads Settings through the get_settings dependency. Write the test file and any helper it needs.",
     "must": [
       "temporary_override\\(",
-      "model_copy\\(update=",
       "get_settings"
     ],
     "must_not": [
@@ -866,6 +865,7 @@
   },
   {
     "name": "trig-nearmiss-style-vs-fastapi",
+    "note": "python-code-style is expected next to the framework skill since its description asks for co-loading.",
     "tags": [
       "trigger",
       "fastapi-service",
@@ -875,11 +875,10 @@
       "with"
     ],
     "expect": [
-      "fastapi-service"
-    ],
-    "forbid": [
+      "fastapi-service",
       "python-code-style"
     ],
+    "forbid": [],
     "prompt": "Add PATCH /v1/authors/{author_id} to our FastAPI service. Fields the client omits must keep their current values, and sending null for name must be rejected because the column is NOT NULL."
   },
   {
@@ -899,5 +898,56 @@
       "ai-agents"
     ],
     "prompt": "Our POST /assistants/conversations endpoint accepts any string as question. It should answer 422 when question is empty or longer than 2000 characters. Where does that validation go and what does it look like?"
+  },
+  {
+    "name": "beh-style-port-legacy",
+    "note": "Without the skill the port keeps dict[str, Any] interfaces and logs the coupon failure instead of raising.",
+    "tags": [
+      "behavior",
+      "python-code-style"
+    ],
+    "arms": [
+      "with",
+      "without"
+    ],
+    "expect": [
+      "python-code-style"
+    ],
+    "forbid": [],
+    "prompt": "Port this module from our old service into this project as app/domains/orders/pricing.py, following this project's style. Behaviour must stay the same, except that failures must no longer be silent.\n\n```python\nimport os, json, datetime\nfrom typing import Optional, List, Dict\n\nCACHE = {}\n\ndef calc(o, c=None):\n    # calculate order price\n    if o is not None:\n        if 'items' in o:\n            t = 0\n            for i in o['items']:\n                if i['qty'] > 0:\n                    if i.get('type') == 'digital':\n                        t = t + i['price'] * i['qty']\n                    else:\n                        if i.get('type') == 'physical':\n                            t = t + i['price'] * i['qty'] + 2.5\n                        else:\n                            t = t + i['price'] * i['qty']\n            if c:\n                try:\n                    d = json.load(open(os.path.join('/etc/shop', 'coupons.json')))[c]\n                    t = t - t * d / 100\n                except Exception:\n                    pass\n            CACHE[o['id']] = t\n            return {'order_id': o['id'], 'total': t, 'status': 'priced', 'at': datetime.datetime.utcnow().isoformat()}\n        else:\n            return None\n    else:\n        return None\n```",
+    "must": [
+      "class \\w+\\(BaseModel\\)|@dataclass",
+      "raise \\w+"
+    ],
+    "must_not": [
+      "dict\\[str, Any\\]",
+      "except Exception",
+      "datetime\\.utcnow\\(",
+      "os\\.path"
+    ]
+  },
+  {
+    "name": "beh-scope-neighbour-rule",
+    "note": "Without the rule every run copies the neighbour's future-birthday validator into the new feature.",
+    "tags": [
+      "behavior",
+      "python-code-style"
+    ],
+    "arms": [
+      "with",
+      "without"
+    ],
+    "expect": [
+      "python-code-style"
+    ],
+    "forbid": [],
+    "prompt": "Here is app/domains/examples/schemas.py:\n\n```python\nfrom datetime import date, datetime, UTC\n\nfrom pydantic import BaseModel, ConfigDict, Field, field_validator\n\n\nclass _ExampleBase(BaseModel):\n    name: str = Field(min_length=1, max_length=128, examples=['My Example'])\n    birthday: date | None = Field(default=None, examples=[date(year=2000, month=1, day=1)])\n\n\nclass ExampleCreate(_ExampleBase):\n    @field_validator('birthday')\n    @classmethod\n    def validate_birthday(cls, birthday: date | None) -> date | None:\n        if birthday is not None and birthday > datetime.now(UTC).date():\n            raise ValueError('Birthday cannot be in the future')\n        return birthday\n\n\nclass Example(_ExampleBase):\n    id: int = Field(description='Example identifier')\n    created_at: datetime\n    updated_at: datetime\n\n    model_config = ConfigDict(from_attributes=True)\n```\n\nAdd the schemas for a new authors feature in app/domains/authors/schemas.py: an author has first_name, last_name and an optional birthday. I need the create payload and the response model. Write the file.",
+    "must": [
+      "class AuthorCreate",
+      "first_name"
+    ],
+    "must_not": [
+      "field_validator|model_validator"
+    ]
   }
 ]

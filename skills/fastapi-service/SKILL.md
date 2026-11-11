@@ -193,13 +193,13 @@ class Author(_AuthorBase):
 
 class AuthorListFilters(BaseModel):
     ids: list[int] | None = Field(default=None, description='Filter by author ids')
-    name: str | None = Field(default=None, min_length=1, max_length=193, description='Filter by full name')
+    name: str | None = Field(default=None, min_length=1, max_length=129, description='Filter by full name')
     created_from: datetime | None = Field(default=None, description='Filter by created at lower bound')
     created_to: datetime | None = Field(default=None, description='Filter by created at upper bound')
 
 
 class AuthorListSorting(BaseListSorting):
-    sort_by: Literal['name', 'first_name', 'last_name', 'created_at', 'updated_at'] = Field(
+    sort_by: Literal['first_name', 'last_name', 'created_at', 'updated_at'] = Field(
         default='created_at', description='Sorting field'
     )
 ```
@@ -211,7 +211,7 @@ Pattern:
 - `Entity` — response model with `id`, timestamps, `from_attributes=True`
 - `EntityListFilters` — query params for filtering
 - `EntityListSorting` — inherits `BaseListSorting`, constrains `sort_by` with `Literal`; make the base frozen (`ConfigDict(frozen=True)`) so ty lets subclasses narrow its `sort_by: str`
-- Always use `Field()` with `min_length`, `max_length`, `examples`, `description`
+- Bound every string field with `min_length` and `max_length`; add `examples` to request fields and a `description` where the name does not explain the field
 
 ## Exceptions
 
@@ -239,6 +239,8 @@ def conflict_exception_handler(request: Request, exc: AlreadyExistError) -> NoRe
 ```
 
 Register handlers in `create_app()`; their order relative to routers and middleware does not matter — Starlette reads the handler mapping on the first request.
+
+**An error response never tells the client why the service failed or what it is built from.** No `detail` names a database, an AI provider, a queue, or another service ("AI provider unavailable", "pricing service is down"). An unexpected failure needs no handler: the built-in 500 answers the client, and the cause goes to the log.
 
 ## Setup
 

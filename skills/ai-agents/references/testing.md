@@ -108,7 +108,7 @@ class TestCatalogAssistantResponse:
         with test_catalog_assistant_agent.override(model=build_mock_model(CatalogAssistantResponse(answer=answer))):
             response = await client.post(
                 '/v1/assistants/conversations',
-                json={'model': 'primary', 'question': 'How many matching items do we have?'},
+                json={'model': 'gpt-6.1-sol', 'question': 'How many matching items do we have?'},
             )
         assert response.status_code == 200
         assert response.json() == {'answer': answer}

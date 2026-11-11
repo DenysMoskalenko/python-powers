@@ -93,14 +93,12 @@ class AuthorCreateOverrides(TypedDict, total=False):
 
 async def create_test_author(session: AsyncSession, **overrides: Unpack[AuthorCreateOverrides]) -> Author:
     payload = AuthorCreateFactory.build(**overrides)
-    author = await AuthorService(session).create_author(payload)
-    return author
+    return await AuthorService(session).create_author(payload)
 ```
 
 - Accept overrides as kwargs — callers pass only what the test cares about
 - Use factory defaults for everything else
 - Call service directly (not HTTP) for setup — test the actual endpoint separately
-- `flush()` after service call so the data is visible within the transaction
 
 Usage: `await create_test_author(session, first_name='Jane')` — only specify what matters.
 
@@ -177,7 +175,7 @@ def override_dependency(app: FastAPI, dependency: Callable, override: Callable) 
 
 
 @contextmanager
-def temporary_override(app: FastAPI, dependency: Callable, override: Callable) -> Generator[None, None, None]:
+def temporary_override(app: FastAPI, dependency: Callable, override: Callable) -> Generator[None]:
     previous = {app: app.dependency_overrides.get(dependency)}
     for route in app.router.routes:
         if isinstance(route, Mount) and isinstance(route.app, FastAPI):
@@ -194,7 +192,7 @@ def temporary_override(app: FastAPI, dependency: Callable, override: Callable) -
 
 
 @contextmanager
-def temporary_overrides(app: FastAPI, overrides: Sequence[DepOverride]) -> Generator[None, None, None]:
+def temporary_overrides(app: FastAPI, overrides: Sequence[DepOverride]) -> Generator[None]:
     with ExitStack() as stack:
         for dep in overrides:
             stack.enter_context(temporary_override(app, dep.dependency, dep.override))
@@ -224,7 +222,7 @@ Calling session methods such as `execute()` without the `session` fixture raises
 
 ```python
 @pytest.fixture(scope='session')
-async def app(_engine: AsyncEngine) -> AsyncGenerator[FastAPI, None]:
+async def app(_engine: AsyncEngine) -> AsyncGenerator[FastAPI]:
     from app.main import create_app
     _app = create_app()
     override_app_test_dependencies(_app)
@@ -232,12 +230,12 @@ async def app(_engine: AsyncEngine) -> AsyncGenerator[FastAPI, None]:
 
 
 @pytest.fixture(scope='session')
-async def client(app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
+async def client(app: FastAPI) -> AsyncGenerator[AsyncClient]:
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
         yield client
 ```
 
-Session-scoped — one app and client per test session. The `_engine` dependency comes from the database skill's fixtures.
+Session-scoped — one app and client per test session. The `_engine` dependency comes from the database skill's fixtures. Session-scoped async fixtures need both session loop-scope settings in the pytest configuration (see `python-tooling`); without them tests and fixtures run on different event loops.
 
 ## Coverage
 
@@ -259,7 +257,7 @@ These mean the test strategy is wrong. Stop and reconsider:
 | Mock `AuthorService` in an API test | Use real service; mock only external I/O (LLMs, third-party APIs) |
 | Use an in-memory SQLite fake instead of testcontainers Postgres | See `postgres-database` skill |
 | Extract an assertion helper after seeing duplication twice | Wait for the 5th repetition; tests benefit from being explicit |
-| Forget `model_dump(mode='json')` on a payload with dates/UUIDs | Serialization fails silently; always use `mode='json'` for HTTP |
+| Forget `model_dump(mode='json')` on a payload with dates/UUIDs | The request fails with `TypeError` (dates and UUIDs are not JSON-serializable); always use `mode='json'` for HTTP |
 | Share mutable state across tests via module-level fixtures | Fixtures must be function-scoped or produce fresh state |
 | Call a real LLM from a test | Block with `ALLOW_MODEL_REQUESTS = False`; see `ai-agents` |
 | Write `test_stuff()` without `test_success` / `test_fail_<reason>` | Rename — the test name is documentation |
@@ -270,3 +268,6 @@ These mean the test strategy is wrong. Stop and reconsider:
 - The default `get_session` override returns a sentinel; accessing session methods without the `session` fixture raises an `AttributeError`
 - Session-scoped `app` and `client` fixtures mean the FastAPI app is created once and shared across all tests
 - `model_dump(mode='json')` is required for proper serialization of dates, UUIDs, and enums in test assertions
+- Two factory builds can draw the same value for a unique column and fail with a unique violation once in many runs; a test that creates several rows passes distinct values for the unique fields (`create_test_author(session, first_name='Jane')`)
+- Rows created in one test share `created_at` and `updated_at`: PostgreSQL `now()` is the transaction start and the whole test is one transaction. Do not assert an order or "updated later" from them; sort by another field or compare as sets
+- `freezegun` moves Python's clock only; a `server_default=func.now()` column still gets the database time

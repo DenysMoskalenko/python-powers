@@ -110,7 +110,7 @@ async def get_session() -> AsyncIterable[AsyncSession]:
 
 
 @asynccontextmanager
-async def open_db_session() -> AsyncGenerator[AsyncSession, None]:
+async def open_db_session() -> AsyncGenerator[AsyncSession]:
     session: AsyncSession = async_session_factory()()
     try:
         yield session

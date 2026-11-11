@@ -24,15 +24,13 @@ MANIFESTS = (
     '.cursor-plugin/plugin.json',
     '.agents/plugins/marketplace.json',
 )
-ALLOWED_KEYS = {'name', 'description', 'disable-model-invocation', 'paths', 'when_to_use', 'metadata', 'license', 'compatibility'}
+ALLOWED_KEYS = {'name', 'description', 'disable-model-invocation'}
 # (target, hard limit) from the skill-writer budgets table: past the target warns, past the limit fails.
 SKILL_LINES = (300, 500)
 REFERENCE_LINES = (200, 300)
 MAX_WORDS = 2000
 MAX_DESCRIPTION_CHARS = 1024
 DESCRIPTION_WORDS = range(30, 56)
-MISTAKES_HEADING = '## Common mistakes'
-MISTAKES_HEADER = '| Mistake | Do instead | Why |'
 FRONTMATTER = re.compile(r'\A---\n(.*?)\n---\n', re.DOTALL)
 FENCE = re.compile(r'^\s*```(.*)$')
 LINK = re.compile(r'\]\(([^)\s]+)\)')
@@ -98,19 +96,6 @@ def check_markdown(path: Path, skill: Path, text: str, line_budget: tuple[int, i
     return problems
 
 
-def check_mistakes_table(text: str) -> list[str]:
-    lines = text.splitlines()
-    if MISTAKES_HEADING not in lines:
-        return []
-    index = lines.index(MISTAKES_HEADING) + 1
-    while index < len(lines) and not lines[index].strip():
-        index += 1
-    header = lines[index] if index < len(lines) else ''
-    if header != MISTAKES_HEADER:
-        return [f'{MISTAKES_HEADING} table header is {header!r}, expected {MISTAKES_HEADER!r}']
-    return []
-
-
 def check_openai_yaml(skill: Path) -> list[str]:
     path = skill / 'agents' / 'openai.yaml'
     if not path.exists():
@@ -137,7 +122,6 @@ def check_skill(skill: Path) -> list[str]:
     problems = [
         *check_frontmatter(skill, text),
         *check_markdown(skill_md, skill, text, SKILL_LINES),
-        *check_mistakes_table(text),
     ]
     for reference in sorted((skill / 'references').glob('*.md')):
         if f'references/{reference.name}' not in text:

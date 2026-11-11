@@ -1,6 +1,6 @@
 ---
 name: python-tooling
-description: Use when bootstrapping or changing Python tooling in `pyproject.toml` or `.pre-commit-config.yaml`, or deciding what to run after a code change — uv dependency management and `uv audit` vulnerability checks, ruff formatting/linting, ty type checking, complexipy, pytest and pytest-asyncio settings, the coverage gate, prek hooks, optional Makefile wrappers, CI quality jobs, and `DeprecationWarning` / `filterwarnings` policy.
+description: Use when adding, removing, or upgrading a dependency, bootstrapping or changing Python tooling in `pyproject.toml` or `.pre-commit-config.yaml`, or deciding what to run after a code change — `uv audit` vulnerability checks, ruff formatting/linting, ty type checking, complexipy, pytest and pytest-asyncio settings, coverage gate, prek hooks, Makefile wrappers, CI quality jobs, and `DeprecationWarning` / `filterwarnings` policy.
 ---
 
 # Python Tooling
@@ -23,6 +23,7 @@ For first-time project setup, full `pyproject.toml` tool snippets, and the basel
 ```bash
 uv add <package>           # production dependency
 uv add --group dev <package>  # dev dependency
+uv remove <package>        # also drops it from uv.lock and the environment
 ```
 
 For new dependencies, let uv resolve the latest compatible version; never guess version numbers. Existing locked versions are preferred while compatible. Use `uv lock --upgrade-package <package>` when intentionally upgrading a dependency within the project's version constraints.
@@ -113,7 +114,7 @@ When a warning or non-fatal error appears:
 Example of a narrow suppression:
 
 ```toml
-[tool.pytest.ini_options]
+[tool.pytest]
 filterwarnings = [
     "error",
     # upstream issue: github.com/org/lib/issues/123 — remove when fixed
@@ -172,7 +173,7 @@ The malware check compares installed packages against OSV malware advisories and
 - `uv add` respects compatibility constraints and existing locked versions; it does not automatically upgrade every package to its latest release
 - `uv run` is required even with an activated venv if you want consistent behavior in CI
 - ruff replaces black, isort, and most flake8 plugins — don't add those separately
-- ty is different from mypy — some type: ignore comments may need `# type: ignore[ty:...]` syntax
+- ty does not read mypy error codes: `# type: ignore[assignment]` suppresses nothing. Use `# ty: ignore[<rule>]` (or `# type: ignore[ty:<rule>]`); a bare `# type: ignore` silences every diagnostic on the line
 - Treat `make` targets as optional convenience wrappers, not as part of Python itself — some projects expose only direct `uv run ...` commands
 - If a tool requires its own config file, keep it there instead of forcing everything into `pyproject.toml`
 - `uv audit` queries OSV over the network; offline it errors instead of passing
