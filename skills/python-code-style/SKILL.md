@@ -40,9 +40,9 @@ class AuthorService:
 Prefer fewer lines when the result is equally readable. Don't split into 3 lines what fits cleanly on 1. Let ruff handle line breaks — write the compact version and the formatter will split it if it exceeds the line length.
 
 ```python
-return Author.model_validate(author)  # Good
+return Author.model_validate(author)
 
-result = Author.model_validate(author)  # Bad
+result = Author.model_validate(author)
 return result
 ```
 
@@ -67,8 +67,8 @@ When a value comes from a predefined set, represent it as `StrEnum` or `Literal`
 Decision rule:
 
 ```text
-Small, local, tied to one field or type alias?  → Literal
-Reused across modules, or needs iteration?      → StrEnum
+Small, local, tied to one field or type alias?          → Literal
+Reused across modules, needs iteration, or > 3 values?  → StrEnum
 ```
 
 ```python
@@ -96,7 +96,7 @@ class AuthorService:
 
 ## Library-First
 
-Before writing custom code, search for an existing library that solves the problem. Evaluate by: maintenance activity, community size, API fit. Import only what the project declares — read `pyproject.toml` instead of assuming a package is installed.
+Before writing custom code, search for an existing library that solves the problem. Evaluate by: maintenance activity, community size, API fit.
 
 Custom code is justified only when:
 - The logic is domain-specific business rules unique to your application
@@ -154,6 +154,8 @@ class AuthorService:
     async def delete_author_by_id(self, author_id: int) -> None: ...
 
     def _apply_filters(self, query: Select, filters: AuthorListFilters) -> Select: ...
+    @staticmethod
+    def _apply_sorting(query: Select, sorting: AuthorListSorting) -> Select: ...
     async def _validate_author_unique(
         self, creation: AuthorCreate, *, exclude_author_id: int | None = None
     ) -> None: ...
@@ -205,21 +207,19 @@ Validate inputs at boundaries with Pydantic or explicit checks. Standard-library
 Non-negotiable defaults, priority order:
 
 1. **KISS** — simple, readable solutions over clever ones
-2. **YAGNI** — don't build for hypothetical future needs. Add no validator, flag, parameter, default, rounding rule, fallback, or endpoint the request neither states nor needs; when the request leaves a choice open, take the option that adds the least behaviour and name it in your reply
+2. **YAGNI** — don't build for hypothetical future needs
 3. **Single Responsibility** — one class, one job, one reason to change
-4. **DRY** — one source of truth, but don't DRY prematurely (wait for the third repetition). Share code only when the copies express one business rule that must change together; code that only looks alike stays separate
+4. **DRY** — one source of truth, but don't DRY prematurely (wait for the third repetition)
 5. **Encapsulation** — hide internal state (`_` prefix), expose behavior
-6. **Loose Coupling** — depend on abstractions, inject dependencies. A class's public methods are the abstraction: inject the concrete class; add a `Protocol` only once a second implementation exists
-7. **Open/Closed** — add behaviour beside working code without rewriting its callers; no class per variant until the same `match` repeats
+6. **Loose Coupling** — depend on abstractions, inject dependencies
+7. **Open/Closed** — extend via new classes or composition, not editing existing code
 8. **Fail Fast** — validate at boundaries, never swallow errors (see section above)
-
-Before adding an abstraction, an option, or shared code, or reviewing a design, read `references/design-principles.md`.
 
 ## Modern Python
 
 Use the latest language features. Python 3.14+ is the target.
 
-- `uuid.uuid7()` over `uuid.uuid4()` (ordered, better for DB indexes); `uuid4()` only where the value must not reveal when it was created
+- `uuid.uuid7()` over `uuid.uuid4()` (ordered, better for DB indexes)
 - f-strings for all string formatting
 - `match` statements when they improve readability over `if/elif`
 - `pathlib.Path` over `os.path`
@@ -267,5 +267,4 @@ These mean you are about to violate a rule above. Stop and apply the named rule:
 ## Gotchas
 
 - `StrEnum` members compare equal to their string value (`AIModelName.GPT_6_1_SOL == 'gpt-6.1-sol'` is `True`). Useful for JSON round-trips, occasionally surprising in asserts.
-- A PEP 695 `type` alias used as a Pydantic field type becomes a named `$ref` component in the JSON and OpenAPI schema and the property loses its `title`; a `TypeAlias` or an inline `Literal` stays inlined. Converting an existing alias changes the public schema.
 - `TypeAdapter(list[X])` is the idiomatic way to validate a list of pydantic models.
