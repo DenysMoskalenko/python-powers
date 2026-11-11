@@ -209,11 +209,11 @@ Non-negotiable defaults, priority order:
 3. **Single Responsibility** — one class, one job, one reason to change
 4. **DRY** — one source of truth, but don't DRY prematurely (wait for the third repetition). Share code only when the copies express one business rule that must change together; code that only looks alike stays separate
 5. **Encapsulation** — hide internal state (`_` prefix), expose behavior
-6. **Loose Coupling** — depend on abstractions, inject dependencies. Inject the concrete class — the parameter is the seam; add a `Protocol` only once a second implementation exists
-7. **Open/Closed** — add behaviour beside working code without rewriting its callers; no plugin architecture until a second variant exists
+6. **Loose Coupling** — depend on abstractions, inject dependencies. A class's public methods are the abstraction: inject the concrete class; add a `Protocol` only once a second implementation exists
+7. **Open/Closed** — add behaviour beside working code without rewriting its callers; no class per variant until the same `match` repeats
 8. **Fail Fast** — validate at boundaries, never swallow errors (see section above)
 
-Before adding an abstraction (base class, `Protocol`, registry) or reviewing a design, read `references/design-principles.md`: what each principle prevents, a test, and an example.
+Before adding an abstraction, an option, or shared code, or reviewing a design, read `references/design-principles.md`.
 
 ## Modern Python
 
