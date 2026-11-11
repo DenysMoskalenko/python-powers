@@ -1,6 +1,6 @@
 ---
 name: python-code-style
-description: Use when writing, reviewing, or refactoring Python 3.14+ application or library code for readability or structure — type hints and PEP 695 aliases, code density, model-first data design, naming, dependency injection, early returns, fail-fast discipline, and architectural principles (KISS, YAGNI, SRP, DRY). For ruff and formatter configuration see `python-tooling`.
+description: Use whenever writing, refactoring, reviewing, or planning Python code — every task that edits a `.py` file, FastAPI, database, agent, and test code included — type hints, data models, enums, dependency injection, error handling, naming, where code belongs, reuse, and architecture principles (KISS, YAGNI, SRP, DRY). For ruff and formatter configuration see `python-tooling`.
 ---
 
 # Python Code Style
@@ -77,8 +77,8 @@ from typing import Literal
 
 
 class AIModelName(StrEnum):
-    PRIMARY = 'primary'
-    FALLBACK = 'fallback'
+    GPT_6_1_SOL = 'gpt-6.1-sol'
+    SONNET_5_5 = 'sonnet-5.5'
 
 
 type SortingOrder = Literal['asc', 'desc']
@@ -266,5 +266,5 @@ These mean you are about to violate a rule above. Stop and apply the named rule:
 
 ## Gotchas
 
-- `StrEnum` members compare equal to their string value (`AIModelName.PRIMARY == 'primary'` is `True`). Useful for JSON round-trips, occasionally surprising in asserts.
+- `StrEnum` members compare equal to their string value (`AIModelName.GPT_6_1_SOL == 'gpt-6.1-sol'` is `True`). Useful for JSON round-trips, occasionally surprising in asserts.
 - `TypeAdapter(list[X])` is the idiomatic way to validate a list of pydantic models.

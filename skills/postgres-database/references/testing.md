@@ -25,7 +25,7 @@ from testcontainers.community.postgres import PostgresContainer
 
 
 @pytest.fixture(scope='session', autouse=True)
-def _postgres_container() -> Generator[PostgresContainer, None, None]:
+def _postgres_container() -> Generator[PostgresContainer]:
     with PostgresContainer(
         image='postgres:18-alpine',
         username='test',
@@ -59,16 +59,16 @@ async def _engine(_postgres_container: PostgresContainer) -> AsyncIterable[Async
     alembic_config = get_alembic_config()
 
     engine = create_async_engine(get_settings().DATABASE.url.unicode_string())
-    async with engine.begin() as connection:
-        await connection.run_sync(lambda conn: downgrade(alembic_config, 'base'))
-        await connection.run_sync(lambda conn: upgrade(alembic_config, 'head'))
+    downgrade(alembic_config, 'base')
+    upgrade(alembic_config, 'head')
     try:
         yield engine
     finally:
-        async with engine.begin() as connection:
-            await connection.run_sync(lambda conn: downgrade(alembic_config, 'base'))
+        downgrade(alembic_config, 'base')
         await engine.dispose()
 ```
+
+Alembic runs through `migrations/env.py`, which opens its own synchronous connection, so the commands are called directly.
 
 ## Function-scoped session with rollback
 

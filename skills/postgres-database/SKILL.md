@@ -146,13 +146,17 @@ class AuthorService:
         query = delete(AuthorModel).filter(AuthorModel.id == author_id).returning(AuthorModel.id)
         deleted_author_id = await self._session.scalar(query)
         if deleted_author_id is None:
-            _logger.info('Author with id=%s not found but requested for deletion', author_id)
+            _logger.info(
+                f'Author with id={author_id} not found but was requested for deletion',
+                extra={'extra': {'author_id': author_id}},
+            )
 ```
 
 - Request-scoped write methods that receive `get_session` do not call `commit()` or `rollback()`
 - `open_db_session()` or the caller-owned session defines the transaction boundary
 - Do not wrap single-statement CRUD writes in `begin_nested()`. Reach for it only when you need partial rollback inside a larger transaction — bulk import that should continue past a per-row failure, or catching `IntegrityError` and keeping the outer transaction usable. For test isolation against accidental `session.commit()` calls, use `join_transaction_mode='create_savepoint'` in the test session fixture, not service-level savepoints.
 - `insert(...).returning(Model)` — single query for insert+read
+- A uniqueness pre-check (`_validate_author_unique`) cannot see a concurrent transaction's uncommitted row; the constraint decides, and the losing request's write raises `IntegrityError`. Catch it in the service method that writes the row: raise `AlreadyExistError` when `exc.orig` is a `psycopg.errors.UniqueViolation`, re-raise anything else. Database exceptions get no handler in `app/core/exception_handlers.py`
 - Domain exceptions (`NotFoundError`) — never `HTTPException` in services
 
 ### Loading relationships
@@ -227,14 +231,14 @@ async def list_authors(
 ) -> Page[Author]:
     query = select(AuthorModel)
     query = self._apply_filters(query, filters)
-    query = self._apply_sorting(query, sorting).order_by(AuthorModel.id)
+    query = sorting.sort_query(query, AuthorModel).order_by(AuthorModel.id)
     return await apaginate(
         self._session, query, params=pagination_params,
         transformer=lambda authors: self.AUTHOR_LIST_ADAPTER.validate_python(authors, from_attributes=True),
     )
 ```
 
-The transformer validates ORM objects into Pydantic models — without it you get raw model instances.
+The transformer validates ORM objects into Pydantic models — without it you get raw model instances. `sort_query` on `BaseListSorting` (`app/core/schemas.py`) orders by the model column named in `sort_by`, so every `sort_by` literal must name a column.
 
 Paginated queries need a unique ordering: default to the primary key, or append it as a tie-breaker after the requested sorting. This stabilizes ordering for unchanged data; concurrent writes can still shift offset-based pages.
 
@@ -273,6 +277,8 @@ Never hand-write migration files. Ensure `migrations/env.py` imports all models 
 
 See `references/testing.md` for testcontainers-backed database isolation: session-scoped Postgres container,
 migration-backed engine fixture, function-scoped rollback session, and startup-migration disabling.
+Import the container as `from testcontainers.community.postgres import PostgresContainer`; the old
+`testcontainers.postgres` path raises a `DeprecationWarning`, which fails a suite run with `filterwarnings = ["error"]`.
 
 ## Red Flags — STOP
 

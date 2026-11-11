@@ -15,10 +15,11 @@ Contents:
 ## uv Environment Setup
 
 ```bash
-uv venv --python 3.14
-source .venv/bin/activate
 uv sync
 ```
+
+`uv sync` creates `.venv` with the interpreter `requires-python` asks for and installs the locked
+dependencies; `uv run` uses it without activation.
 
 ## uv Configuration
 
@@ -63,9 +64,12 @@ select = [
     "ERA",   # eradicate (commented code)
     "ANN",   # flake8-annotations
     "FAST",  # FastAPI
+    "RET",   # flake8-return
+    "SIM",   # flake8-simplify
+    "PTH",   # flake8-use-pathlib
+    "UP",    # pyupgrade
     "RUF",   # Ruff-specific
 ]
-pydocstyle.convention = 'google'
 
 [tool.ruff.lint.mccabe]
 max-complexity = 12
@@ -74,8 +78,16 @@ max-complexity = 12
 paths = ["app", "tests"]
 max-complexity-allowed = 12
 
+[tool.ruff.lint.flake8-unused-arguments]
+ignore-variadic-names = true
+
+[tool.ruff.lint.flake8-annotations]
+allow-star-arg-any = true
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "ARG", "ANN"]
+"migrations/*" = ["ANN"]
+"app/infrastructure/db/models/*" = ["UP037"]  # quoted relationship targets: TYPE_CHECKING-only imports
 
 [tool.ruff.lint.isort]
 known-local-folder = ["tests", "app", "scripts"]
@@ -97,11 +109,14 @@ unused-type-ignore-comment = "ignore"
 ## pytest Configuration
 
 ```toml
-[tool.pytest.ini_options]
+[tool.pytest]
 asyncio_mode = "auto"
-addopts = "-ra"
+addopts = ["-ra"]
 filterwarnings = ["error"]
 ```
+
+The native `[tool.pytest]` table needs pytest 9+; pytest 8 ignores it without a warning and runs with
+defaults.
 
 Add `asyncio_default_fixture_loop_scope = "session"` and `asyncio_default_test_loop_scope = "session"`
 only when the project actually uses session-scoped async fixtures; the fixture setting alone

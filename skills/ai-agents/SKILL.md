@@ -26,7 +26,7 @@ app/domains/catalog_assistant/
   prompts.py           # system prompt text
   schemas/             # grew to a subpackage — API contract vs agent/tool I/O
     __init__.py        # facade re-exporting both files
-    schemas_api.py     # request/response + model-name enum (the HTTP contract)
+    schemas_api.py     # request/response (the HTTP contract)
     schemas_agent.py   # agent deps + tool input/output models
 ```
 
@@ -108,7 +108,7 @@ Key patterns:
 - Tools call services from `ctx.deps`, never import globals
 - Tools sharing one `AsyncSession` through a service must each use `sequential=True` so their operations do not overlap. Tools using independent, concurrency-safe resources can run in parallel.
 - `retries=0` to fail fast; `retries` budgets tool-argument and output validation retries (never provider errors), and a retry hides a malformed call
-- No `temperature` with `thinking`: depending on the model, pydantic-ai drops it with a warning or the provider rejects the request; keep `max_tokens` above a fixed thinking budget (`'low'` is 2,048 tokens on Claude Haiku 4.5)
+- No `temperature` with `thinking`: depending on the model, pydantic-ai drops it with a warning or the provider rejects the request; keep `max_tokens` above a fixed thinking budget (`'low'` is 2,048 tokens on Claude models without adaptive thinking)
 
 ## Tool input schemas
 
@@ -147,44 +147,55 @@ Rules outperform descriptions ("Use X for Y" beats "You can use X"). Pass it as 
 
 ## Model registry
 
-A `type` alias mapping request model names to fully constructed `Model` instances, defined in `agents.py`. Keep provider wiring in `infrastructure/llms/`:
+A `type` alias mapping model names to fully constructed `Model` instances, built in `app/infrastructure/llms/llm_models.py` beside the provider wiring:
 
 ```python
 from typing import Annotated
 
 from fastapi import Depends
 from pydantic_ai.models import Model
+from pydantic_ai.models.bedrock import BedrockConverseModel
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.bedrock import BedrockProvider
+from pydantic_ai.providers.openai import OpenAIProvider
 
-from app.domains.catalog_assistant.schemas import AssistantModelName
-from app.infrastructure.llms.registry import get_fallback_model, get_primary_model
+from app.core.config import get_settings, Settings
+from app.core.enums import AIModelName
+from app.infrastructure.llms.provider_bedrock import get_bedrock_provider
+from app.infrastructure.llms.provider_openai import get_openai_provider
 
-type ModelRegistry = dict[AssistantModelName, Model]
+type ModelRegistry = dict[AIModelName, Model]
 
 
-def get_model_registry(
-    primary_model: Annotated[Model, Depends(get_primary_model)],
-    fallback_model: Annotated[Model, Depends(get_fallback_model)],
+def get_llm_models_registry(
+    settings: Annotated[Settings, Depends(get_settings)],
+    bedrock_provider: Annotated[BedrockProvider, Depends(get_bedrock_provider)],
+    openai_provider: Annotated[OpenAIProvider, Depends(get_openai_provider)],
 ) -> ModelRegistry:
     return {
-        AssistantModelName.PRIMARY: primary_model,
-        AssistantModelName.FALLBACK: fallback_model,
+        AIModelName.SONNET_5_5: BedrockConverseModel(
+            provider=bedrock_provider, model_name=settings.BEDROCK.model_sonnet_5_5
+        ),
+        AIModelName.GPT_6_1_SOL: OpenAIChatModel(
+            provider=openai_provider, model_name=settings.OPENAI.gpt_6_1_sol_model_name
+        ),
     }
 ```
 
-Use `StrEnum` for model names — serializes cleanly in JSON. It belongs in `schemas/schemas_api.py` (part of the request contract):
+Use `StrEnum` for model names — serializes cleanly in JSON. Name each member after the model it runs, never after a role (`primary`, `fallback`): the request and the logs then say which model did the job. Every agent shares the enum, so it lives in `app/core/enums.py`:
 
 ```python
 from enum import StrEnum
 
 
-class AssistantModelName(StrEnum):
-    PRIMARY = 'primary'
-    FALLBACK = 'fallback'
+class AIModelName(StrEnum):
+    GPT_6_1_SOL = 'gpt-6.1-sol'
+    SONNET_5_5 = 'sonnet-5.5'
 ```
 
 ## Agent as FastAPI dependency
 
-The dependency sits in the same `agents.py` as the builder and `get_model_registry`. It reads the request payload to select the model, then calls the builder:
+The dependency sits in the same `agents.py` as the builder. It reads the request payload to select the model, then calls the builder:
 
 ```python
 from typing import Annotated
@@ -197,11 +208,12 @@ from app.domains.catalog_assistant.schemas import (
     CatalogAssistantRequest,
     CatalogAssistantResponse,
 )
+from app.infrastructure.llms.llm_models import get_llm_models_registry, ModelRegistry
 
 
 def get_catalog_assistant_agent(
     payload: CatalogAssistantRequest,
-    model_registry: Annotated[ModelRegistry, Depends(get_model_registry)],
+    model_registry: Annotated[ModelRegistry, Depends(get_llm_models_registry)],
 ) -> Agent[CatalogAssistantDeps, CatalogAssistantResponse]:
     return build_catalog_assistant_agent(model_registry[payload.model])
 ```
@@ -240,7 +252,7 @@ class CatalogAssistantService:
         return result.output
 ```
 
-`request_limit` caps model requests per run (library default 50); exceeding it raises `UsageLimitExceeded`, which is not a `ModelAPIError`, so register its own handler in `app/core/exception_handlers.py` beside the domain handlers and answer 503.
+`request_limit` caps model requests per run (library default 50); exceeding it raises `UsageLimitExceeded`, which is not a `ModelAPIError`, so register its own handler in `app/core/exception_handlers.py` beside the domain handlers and answer 503. With `retries=0`, one malformed tool call or output raises `UnexpectedModelBehavior`; add no handler for it — the client gets the built-in 500 and the cause goes to the log.
 
 ## Agent route
 
@@ -278,7 +290,7 @@ See `references/testing.md` for the full test pattern: blocking real model reque
 
 ## Provider-specific behavior
 
-See `references/providers.md` for provider-specific model settings (Bedrock caching) and provider error mapping tests (`ModelHTTPError`, `ModelAPIError` → HTTP status mapping).
+See `references/providers.md` for provider-specific model settings (Bedrock caching) and provider error mapping tests (`ModelHTTPError`, `ModelAPIError` → HTTP status mapping). With a Bedrock model, a `botocore.exceptions.BotoCoreError` such as `NoCredentialsError` reaches the app unwrapped and needs its own handler.
 
 ## Red Flags — STOP
 
@@ -289,7 +301,7 @@ These mean the agent boundary is drifting. Stop and apply the named rule:
 | Import a service directly inside an agent tool | Agent dependencies — tools use `ctx.deps` only |
 | Write a system prompt as "You can use..." | System prompts — write rules as "Use X for Y" |
 | Set `retries > 0` on the agent | Agent factory — use `retries=0` so failures surface |
-| Instantiate provider models inside the model registry | Model registry — delegate provider wiring to `infrastructure/llms/` |
+| Construct a provider (`BedrockProvider`, `OpenAIProvider`) inside the model registry | Model registry — inject providers from `infrastructure/llms/` |
 | Let tests run without `ALLOW_MODEL_REQUESTS = False` | Testing — block real model requests globally |
 | Resolve output tools in mocks by list index | Testing — resolve output tools by schema keys |
 
