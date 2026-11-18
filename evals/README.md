@@ -39,6 +39,8 @@ Graded artefacts land in `evals/results/<stamp>/` (gitignored): per run the raw 
 
 `claude plugin eval` covers the same ground, but it reads `**/case.yaml` or `prompt.md` + `graders/*.md` suites under `evals/`, not `cases.json`; the cases here carry the same information so they can be ported.
 
+For a paid comparison, get approval and use the same affected cases, model, settings and repetitions on the previous and candidate revisions. Record both plugin SHAs, the case-suite SHA and the resolved model in the stream’s initialization event.
+
 ## Case format (`cases.json`)
 
 ```json
@@ -51,6 +53,7 @@ Graded artefacts land in `evals/results/<stamp>/` (gitignored): per run the raw 
   "expect": ["fastapi-service"],
   "forbid": ["project-scaffolding"],
   "prompt": "Add GET /v1/authors/{author_id} ...",
+  "files": ["app/**/*.py"],
   "must": ["NotFoundError"],
   "must_not": ["def get_author_by_id[\\s\\S]{0,400}raise HTTPException"],
   "note": "free text for maintainers; the runner ignores it"
@@ -60,10 +63,15 @@ Graded artefacts land in `evals/results/<stamp>/` (gitignored): per run the raw 
 - `arms`: `with` loads the plugin; `without` disables the `Skill` tool. Trigger cases use `["with"]`.
 - `cwd`: `fixture` (default) or `empty` for greenfield prompts.
 - `expect` / `forbid`: skills that must fire / must not fire in the `with` arm (names without the `python-powers:` prefix). `forbid` is graded on routing order: a forbidden skill fails the case only when it fires before the first expected skill, because an agent legitimately loads a sibling later as a helper (a database task that then writes tests loads `python-testing` too).
-- `must`: regexes that may match any `Write` content, `Edit` replacement, fenced code block from the agent's prose, or `Bash` command it tried to run (a denied `uv add` is still evidence).
-- `must_not`: regexes evaluated against each written payload on its own. They never see prose or fenced blocks, so quoting a skill's own counter-example cannot fail a case, and a proximity pattern cannot span two unrelated files.
+- `files` lists required worktree-relative paths or globs. Each must match at least one new or changed file at the end of the run. `must` and `must_not` regexes search each matching path and its final contents together. The saved `*.code.txt` contains the graded evidence.
+- `final_command` gives the command prefix for a plan-only case. The final answer must present exactly one matching shell command on its own line. Backslash continuations and shell quoting are supported. Each `must` or `must_not` regex matches a whole argument of that command. Conflicting or repeated assignments fail the case. Surrounding prose and earlier attempts do not affect the grade.
+- `fixture_scopes` maps each required pytest fixture scope to a regex for its implementation. The grader inspects the fixture and local helper functions it calls without importing generated code. Omitted scope means function scope. Use a grader interpreter that can parse the generated project’s Python syntax (currently Python 3.14).
+- `must_commands` checks commands that a mixed file-and-command task also asks for. A command presented on its own line in the final response or attempted with Bash counts even when execution is denied.
+- Cases without `files` or `final_command` retain transcript grading. Their `must` regexes may match Write/Edit payloads, fenced code or attempted Bash commands. Their `must_not` regexes search each Write/Edit payload separately.
 - `note`: free text the runner ignores. Use it to record couplings, such as a pinned SHA that also lives in a skill.
 
 Unknown keys, duplicate case names and repeated patterns are rejected when the file loads.
+
+Run the grader regression tests locally with `uv run --with pyyaml python -m unittest discover -s evals`. They use temporary workspaces and make no model requests.
 
 Add a case for every rule that exists because an agent got it wrong; keep prompts substantive and realistic (one-step questions rarely trigger any skill). `.claude/skills/skill-writer` is the one skill with no cases: it is `disable-model-invocation: true`, so it never fires on its own and a trigger case could not pass; its behaviour scenarios stay manual for now. The human-readable specification the cases derive from is `evals/scenarios.md`.

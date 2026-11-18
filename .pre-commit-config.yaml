@@ -18,5 +18,6 @@ repos:
         name: check skills
         entry: uv run evals/check_skills.py
         language: system
-        files: ^(skills/|evals/check_skills\.py|\.claude-plugin/|\.codex-plugin/|\.cursor-plugin/|\.agents/plugins/)
+        files: ^(skills/|evals/check_skills\.py|\.claude-plugin/|\.codex-plugin/|\.cursor-plugin/|\.agents/plugins/|plugins/python-powers$)
+        types: []
         pass_filenames: false

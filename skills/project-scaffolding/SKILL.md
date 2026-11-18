@@ -15,7 +15,7 @@ For changing tooling, dependencies, or CI in an existing project use `python-too
 
 ## When to use
 
-This skill applies only at time-zero of a new service — before any `app/`, `pyproject.toml`, or `.git` exists in the target directory.
+This skill applies before the target contains any project files. A newly initialized Git repository with only `.git` is still greenfield.
 
 **Do NOT load for ongoing work.** Adding a route, model, agent, test, or dependency to a project that already exists is owned by the domain skills, never by re-scaffolding. There is no "scaffold a missing piece into an existing repo" path — see [Red Flags](#red-flags--stop).
 
@@ -34,6 +34,7 @@ Infer every other input from the conversation too. When a value genuinely forks 
 
 | Input | Baseline | Override when… |
 |---|---|---|
+| `project_name` | a valid Python distribution name derived from the service title (e.g., “Book Catalog API” → `book-catalog-api`) | the user provides a valid package name |
 | `python_version` | `3.14` | the user pins a different supported runtime |
 | `project_description` | one line describing the service, taken from the conversation | — |
 | `author_name`, `author_email` | `git config user.name` / `user.email` | unset — keep the template placeholder and tell the user to fix it |
@@ -56,7 +57,7 @@ Drive Cookiecutter non-interactively, passing every selected input explicitly, i
 ```bash
 uv tool run cookiecutter https://github.com/DenysMoskalenko/BoilerplateBuilder \
   --no-input \
-  project_name="Books" \
+  project_name="book-catalog-api" \
   project_description="Catalog API for books" \
   author_name="Ada Lovelace" \
   author_email="ada@example.com" \
@@ -72,7 +73,8 @@ uv tool run cookiecutter https://github.com/DenysMoskalenko/BoilerplateBuilder \
 - `--no-input` skips interactive prompts. Omitted keys use template defaults, overridden by any Cookiecutter user configuration.
 - **Always pass `project_type` explicitly** — the template's own default is the heaviest variant (`fastapi_db_agent`).
 - Boolean inputs take the strings `yes` / `no`.
-- **Create New vs Extract Here** (`extract_to_current_dir`): the default `Create New` generates a fresh subdirectory named after the project — use it when there is no target directory yet. Pass `extract_to_current_dir="Extract Here"` when the user is already inside the directory the project should fill (they made and opened an empty folder). Either way, only ever generate into an **empty** location — never one that already holds a project.
+- `Create New` generates a subdirectory named after the project. Use `Extract Here` only for a completely empty destination.
+- For a destination containing only a fresh `.git`, generate with `--output-dir` pointing to a temporary directory outside any Git worktree, `Create New`, and `initialize_git=no`. The builder attempts to install hooks even when Git initialization is disabled. Confirm the destination still contains only `.git`, then copy the generated project contents including dotfiles and `uv.lock`, excluding `.git` and `.venv`. Run `uv sync` in the destination to recreate the environment at its final path.
 
 ## After scaffolding
 

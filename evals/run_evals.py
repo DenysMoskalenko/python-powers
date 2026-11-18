@@ -5,9 +5,8 @@ this repository, so the repo's own ``CLAUDE.md`` / ``AGENTS.md`` and git identit
 the agent's context. Behaviour cases also run a "without" arm with the ``Skill`` tool disabled, and
 the summary warns when the "with" arm did not score higher (both arms can legitimately reach 1.0).
 
-Grading is regex over what the agent produced. ``must`` may match any ``Write`` content, ``Edit``
-replacement, fenced code block from its prose or ``Bash`` command it tried; ``must_not`` is evaluated against each written
-payload on its own, so it can never fire on prose, on a fenced counter-example, or across two files.
+Behaviour cases grade final worktree files or the arguments of a command in the final response.
+Command-intent checks can also credit commands the agent attempted with the restricted Bash tool.
 
 Usage examples::
 
@@ -24,11 +23,13 @@ not ``cases.json``; the cases carry the same information so they can be ported.
 from __future__ import annotations
 
 import argparse
+import ast
 from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -44,7 +45,10 @@ CODE_FENCE = re.compile(r'```[\w+-]*\n(.*?)```', re.S)
 # Bash(uv --version): a denied version probe reads as "uv is not installed" and the agent hand-edits pyproject.toml.
 ALLOWED_TOOLS = ['Skill', 'Read', 'Glob', 'Grep', 'Write', 'Edit', 'Bash(ls:*)', 'Bash(find:*)', 'Bash(uv --version)']
 CASE_KEYS = frozenset(
-    {'name', 'note', 'tags', 'arms', 'cwd', 'max_turns', 'expect', 'forbid', 'prompt', 'must', 'must_not'}
+    {
+        'name', 'note', 'tags', 'arms', 'cwd', 'max_turns', 'expect', 'forbid', 'prompt', 'must', 'must_not',
+        'files', 'final_command', 'must_commands', 'fixture_scopes',
+    }
 )
 CONTEXT_FILES = ('CLAUDE.md', 'AGENTS.md')
 # Every other CLAUDE*/ANTHROPIC* variable is dropped so the run does not inherit the caller's
@@ -76,6 +80,8 @@ class Transcript(NamedTuple):
     payloads: list[str]  # one entry per Write content / Edit new_string, never concatenated
     fenced: list[str]  # fenced code blocks from prose and Bash commands; `must` reads these, `must_not` does not
     prose: str
+    answer: str
+    commands: list[str]
     cost: float | None
     turns: int | None
     subtype: str | None  # the result event's subtype: 'success', 'error_max_turns', ...
@@ -110,7 +116,18 @@ def validate_cases(cases: list[dict]) -> None:
         if name in seen:
             raise SystemExit(f'cases.json: duplicate case name {name}')
         seen.add(name)
-        for key in ('must', 'must_not'):
+        if 'files' in case:
+            files = case['files']
+            if not isinstance(files, list) or not files or not all(
+                isinstance(path, str) and path and not Path(path).is_absolute() and '..' not in Path(path).parts
+                for path in files
+            ):
+                raise SystemExit(f'cases.json: {name} needs a nonempty list of worktree-relative file patterns')
+        if 'fixture_scopes' in case and (not case.get('files') or not isinstance(case['fixture_scopes'], dict)):
+            raise SystemExit(f'cases.json: {name} needs files and a scope-to-pattern mapping for fixture_scopes')
+        if 'final_command' in case and ('files' in case or not case['final_command'].strip() or not case.get('must')):
+            raise SystemExit(f'cases.json: {name} needs one command with required arguments and no files')
+        for key in ('must', 'must_not', 'must_commands'):
             patterns = case.get(key, [])
             if len(set(patterns)) != len(patterns):
                 raise SystemExit(f'cases.json: {name} repeats a {key} pattern')
@@ -202,7 +219,9 @@ def absorb(block: dict, buckets: dict[str, list[str]]) -> None:
         elif name == 'Bash':
             # A command the agent tried to run is evidence for `must` even when the harness denied
             # it (only ls/find/`uv --version` are allowed): a denied `uv add` is still the right behaviour.
-            buckets['fenced'].append(payload.get('command', ''))
+            command = payload.get('command', '')
+            buckets['commands'].append(command)
+            buckets['fenced'].append(command)
     elif block.get('type') == 'text':
         text = block.get('text', '')
         buckets['prose'].append(text)
@@ -210,8 +229,9 @@ def absorb(block: dict, buckets: dict[str, list[str]]) -> None:
 
 
 def collect(stdout: str) -> Transcript:
-    buckets: dict[str, list[str]] = {'skills': [], 'payloads': [], 'fenced': [], 'prose': []}
+    buckets: dict[str, list[str]] = {'skills': [], 'payloads': [], 'fenced': [], 'prose': [], 'commands': []}
     cost = turns = subtype = None
+    answer = ''
     for line in stdout.splitlines():
         try:
             event = json.loads(line)
@@ -222,15 +242,105 @@ def collect(stdout: str) -> Transcript:
                 absorb(block, buckets)
         elif event.get('type') == 'result':
             cost, turns, subtype = event.get('total_cost_usd'), event.get('num_turns'), event.get('subtype')
-            buckets['prose'].append(event.get('result', ''))
+            answer = event.get('result', '')
+            buckets['prose'].append(answer)
     return Transcript(
-        buckets['skills'], buckets['payloads'], buckets['fenced'], '\n'.join(buckets['prose']), cost, turns, subtype
+        buckets['skills'], buckets['payloads'], buckets['fenced'], '\n'.join(buckets['prose']),
+        answer, buckets['commands'], cost, turns, subtype
     )
 
 
-def grade(case: dict, arm: str, transcript: Transcript) -> dict[str, Any]:
+def answer_lines(answer: str) -> list[str]:
+    logical_lines = answer.replace('\\\n', ' ').splitlines()
+    return [line.strip().strip('`').removeprefix('$ ').strip() for line in logical_lines]
+
+
+def final_command_args(answer: str, prefix: str) -> list[str]:
+    expected = shlex.split(prefix)
+    commands = []
+    for line in answer_lines(answer):
+        try:
+            lexer = shlex.shlex(line, posix=True, punctuation_chars=';&|')
+            lexer.whitespace_split = True
+            args = list(lexer)
+        except ValueError:
+            continue
+        if args[:len(expected)] == expected:
+            options = args[len(expected):]
+            keys = [arg.split('=', 1)[0] for arg in options if '=' in arg]
+            if len(set(keys)) != len(keys) or any(arg and not arg.strip(';&|') for arg in options):
+                return []
+            commands.append(options)
+    return commands[0] if len(commands) == 1 else []
+
+
+def file_evidence(case: dict, workdir: Path) -> tuple[list[str], list[str]]:
+    contents = {}
+    missing = []
+    root = workdir.resolve()
+    for pattern in case['files']:
+        found = False
+        for path in sorted(workdir.glob(pattern)):
+            if not path.is_file() or not path.resolve().is_relative_to(root):
+                continue
+            relative = path.relative_to(workdir)
+            data = path.read_bytes()
+            original = FIXTURE_DIR / relative
+            if case.get('cwd') != 'empty' and original.is_file() and original.read_bytes() == data:
+                continue
+            contents[relative] = f'{relative}\n{data.decode(errors="replace")}'
+            found = True
+        if not found:
+            missing.append(pattern)
+    return list(contents.values()), missing
+
+
+def fixture_source(function: ast.FunctionDef | ast.AsyncFunctionDef, definitions: dict) -> str:
+    pending = [function]
+    reachable = {}
+    while pending:
+        current = pending.pop()
+        if current.name in reachable:
+            continue
+        reachable[current.name] = ast.unparse(current)
+        for call in ast.walk(current):
+            if isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id in definitions:
+                pending.append(definitions[call.func.id])
+    return '\n'.join(reachable.values())
+
+
+def fixture_evidence(files: list[str]) -> dict[str, list[str]]:
+    scoped: dict[str, list[str]] = {}
+    for file in files:
+        try:
+            module = ast.parse(file.partition('\n')[2])
+        except SyntaxError:
+            continue
+        functions = {f.name: f for f in module.body if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        for function in functions.values():
+            for decorator in function.decorator_list:
+                factory = decorator.func if isinstance(decorator, ast.Call) else decorator
+                if ast.unparse(factory).split('.')[-1] != 'fixture':
+                    continue
+                keywords = decorator.keywords if isinstance(decorator, ast.Call) else []
+                scope = next((kw.value for kw in keywords if kw.arg == 'scope'), ast.Constant('function'))
+                if isinstance(scope, ast.Constant) and isinstance(scope.value, str):
+                    scoped.setdefault(scope.value, []).append(fixture_source(function, functions))
+    return scoped
+
+
+def grade(case: dict, arm: str, transcript: Transcript, workdir: Path) -> tuple[dict[str, Any], list[str]]:
     short = [skill.split(':')[-1] for skill in transcript.skills]
-    payloads, written = transcript.payloads, transcript.payloads + transcript.fenced
+    missing_files = []
+    match = re.search
+    if 'files' in case:
+        written, missing_files = file_evidence(case, workdir)
+        forbidden = written
+    elif 'final_command' in case:
+        written = forbidden = final_command_args(transcript.answer, case['final_command'])
+        match = re.fullmatch
+    else:
+        written, forbidden = transcript.payloads + transcript.fenced, transcript.payloads
     # Routing is graded on order: a forbidden skill may load later as a helper (a database task that then
     # writes tests loads python-testing too), but it must not be what the prompt routed to first.
     expected_at = [short.index(name) for name in case.get('expect', []) if name in short]
@@ -239,17 +349,30 @@ def grade(case: dict, arm: str, transcript: Transcript) -> dict[str, Any]:
         'expect_ok': all(name in short for name in case.get('expect', [])) if arm == 'with' else None,
         'forbid_ok': not any(name in routed_before for name in case.get('forbid', [])) if arm == 'with' else None,
         'truncated': transcript.subtype == 'error_max_turns',
-        'must': {p: any(re.search(p, part) for part in written) for p in case.get('must', [])},
-        'must_not': {p: not any(re.search(p, part) for part in payloads) for p in case.get('must_not', [])},
+        'must': {p: any(match(p, part) for part in written) for p in case.get('must', [])},
+        'must_not': {p: not any(match(p, part) for part in forbidden) for p in case.get('must_not', [])},
+        'missing_files': missing_files,
     }
-    graded = list(result['must'].values()) + list(result['must_not'].values())
+    if case.get('fixture_scopes'):
+        fixtures = fixture_evidence(written)
+        for scope, pattern in case['fixture_scopes'].items():
+            result['must'][f'{scope}-scoped fixture: {pattern}'] = any(
+                re.search(pattern, source) for source in fixtures.get(scope, [])
+            )
+    if case.get('must_commands'):
+        commands = transcript.commands + answer_lines(transcript.answer)
+        result['must'].update({p: any(re.match(p, cmd) for cmd in commands) for p in case['must_commands']})
+        written = written + commands
+    graded = list(result['must'].values()) + list(result['must_not'].values()) + [False] * len(missing_files)
     result['score'] = round(sum(graded) / len(graded), 2) if graded else None
-    return result
+    return result, written
 
 
-def write_artefacts(results_dir: Path, prefix: str, stdout: str, transcript: Transcript, result: dict) -> None:
+def write_artefacts(
+    results_dir: Path, prefix: str, stdout: str, transcript: Transcript, result: dict, evidence: list[str]
+) -> None:
     (results_dir / f'{prefix}.stream.jsonl').write_text(stdout)
-    (results_dir / f'{prefix}.code.txt').write_text('\n'.join(transcript.payloads + transcript.fenced))
+    (results_dir / f'{prefix}.code.txt').write_text('\n'.join(evidence))
     (results_dir / f'{prefix}.prose.txt').write_text(transcript.prose)
     (results_dir / f'{prefix}.json').write_text(json.dumps(result, indent=1))
 
@@ -265,17 +388,20 @@ def run_one(case: dict, arm: str, run_index: int, args: argparse.Namespace, resu
         )
     except (OSError, subprocess.TimeoutExpired) as exc:  # missing binary, or the run ran out of time
         partial = getattr(exc, 'stdout', '') or ''
+        if isinstance(partial, bytes):
+            partial = partial.decode(errors='replace')
         reason = f'timed out after {args.timeout}s' if isinstance(exc, subprocess.TimeoutExpired) else repr(exc)
         completed = subprocess.CompletedProcess(command, returncode=-1, stdout=partial, stderr=reason)
     transcript = collect(completed.stdout)
+    grading, evidence = grade(case, arm, transcript, workdir)
     result = {
         'case': case['name'], 'arm': arm, 'run': run_index, 'model': args.model or 'default',
         'skills': transcript.skills, 'cost': transcript.cost, 'turns': transcript.turns,
         'seconds': round(time.time() - started), 'returncode': completed.returncode,
         'error': run_error(completed.returncode, transcript), 'stderr': completed.stderr[-400:],
-        **grade(case, arm, transcript),
+        **grading,
     }  # fmt: skip
-    write_artefacts(results_dir, f'{case["name"]}.{arm}.{run_index}', completed.stdout, transcript, result)
+    write_artefacts(results_dir, f'{case["name"]}.{arm}.{run_index}', completed.stdout, transcript, result, evidence)
     if not args.keep_workdirs:
         shutil.rmtree(workdir, ignore_errors=True)
     print(json.dumps({key: result[key] for key in SUMMARY_KEYS}), flush=True)  # noqa: T201 - CLI progress
@@ -286,7 +412,7 @@ def run_error(returncode: int, transcript: Transcript) -> str | None:
     """A run that died is never graded as a pass. A run that hit the turn cap is graded on what it did
     before the cap and reported as truncated: the skill calls it made are real, and a behaviour case that
     still scores 1.0 after truncation is noted in the summary rather than failed."""
-    if returncode != 0 and transcript.subtype != 'error_max_turns':
+    if returncode < 0 or (returncode != 0 and transcript.subtype != 'error_max_turns'):
         return f'claude exited {returncode}'
     if transcript.turns is None:
         return 'transcript has no result event'
@@ -304,6 +430,7 @@ def collect_failures(results: list[dict]) -> list[str]:
             continue
         broken = [p for p, ok in result['must'].items() if not ok]
         broken += [f'not {p}' for p, ok in result['must_not'].items() if not ok]
+        broken += [f'missing file: {pattern}' for pattern in result.get('missing_files', [])]
         if result['expect_ok'] is False or result['forbid_ok'] is False or broken:
             failures.append(f'{name} [with run {run}]: skills={result["skills"]} patterns={broken}')
     return failures

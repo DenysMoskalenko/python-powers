@@ -93,7 +93,7 @@ from typing import Annotated
 
 from fastapi import Depends
 
-from app.core.exceptions import AlreadyExistError, NotFoundError
+from app.core.exceptions import NotFoundError
 
 
 class AuthorService:
@@ -106,34 +106,6 @@ class AuthorService:
         if author is None:
             raise NotFoundError(f'Author(id={author_id}) not found')
         return Author.model_validate(author)
-
-    async def create_author(self, creation: AuthorCreate) -> Author:
-        await self._validate_author_unique(creation)
-        query = insert(AuthorModel).values(**creation.model_dump()).returning(AuthorModel)
-        author = await self._session.scalar(query)
-        return Author.model_validate(author)
-
-    async def update_author(self, author_id: int, updates: AuthorUpdate) -> Author:
-        await self.get_author_by_id(author_id)
-        await self._validate_author_unique(updates, exclude_author_id=author_id)
-        query = update(AuthorModel).filter(AuthorModel.id == author_id).values(**updates.model_dump())
-        author = await self._session.scalar(query.returning(AuthorModel))
-        if author is None:
-            raise NotFoundError(f'Author(id={author_id}) not found')
-        return Author.model_validate(author)
-
-    async def _validate_author_unique(self, creation: AuthorCreate, *, exclude_author_id: int | None = None) -> None:
-        query = select(AuthorModel.id).filter(
-            AuthorModel.first_name == creation.first_name,
-            AuthorModel.last_name == creation.last_name,
-            AuthorModel.birthday.is_not_distinct_from(creation.birthday),  # NULL-safe equality
-        )
-        if exclude_author_id is not None:
-            query = query.filter(AuthorModel.id != exclude_author_id)
-        if await self._session.scalar(query) is not None:
-            raise AlreadyExistError(
-                f'Author(name={creation.first_name} {creation.last_name}, birthday={creation.birthday}) already exists'
-            )
 ```
 
 Key patterns:
