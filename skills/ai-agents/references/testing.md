@@ -69,7 +69,11 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 def build_mock_model(response: BaseModel) -> FunctionModel:
     def _cb(_messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
-        return _build_output_model_response(info, response)
+        if len(info.output_tools) != 1:
+            raise AssertionError('Expected one output tool')
+        part = ToolCallPart(tool_name=info.output_tools[0].name, args=response.model_dump(mode='json', by_alias=True))
+        return ModelResponse(parts=[part])
+
     return FunctionModel(_cb)
 
 
@@ -77,19 +81,9 @@ def build_raising_model(exc: Exception) -> FunctionModel:
     def _cb(_messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         raise exc
     return FunctionModel(_cb)
-
-
-def _build_output_model_response(info: AgentInfo, response: BaseModel) -> ModelResponse:
-    payload = response.model_dump(mode='json')
-    payload_keys = set(payload.keys())
-    for output_tool in info.output_tools:
-        properties = (output_tool.parameters_json_schema or {}).get('properties', {})
-        if set(properties.keys()).issubset(payload_keys):
-            return ModelResponse(parts=[ToolCallPart(tool_name=output_tool.name, args=payload)])
-    raise AssertionError('Could not resolve final result tool')
 ```
 
-`build_mock_model` resolves the output tool by matching schema keys — if the response model changes, the mock matches automatically.
+Pass the agent's declared response model to `build_mock_model`. It sends one tool call, using the field aliases shared by validation and serialization. If those aliases differ, supply the keys the output tool accepts. For a union with multiple output tools, select the intended tool by name in the test and assert the returned type. Two output models can have identical field names.
 
 ## Test-scoped model override
 
@@ -117,5 +111,4 @@ class TestCatalogAssistantResponse:
 ## Gotchas
 
 - `ALLOW_MODEL_REQUESTS = False` must be set before any agent import — otherwise agent modules with import-time side effects can still reach the provider.
-- If `build_mock_model` raises `AssertionError('Could not resolve final result tool')`, the response model's schema does not match any output tool — usually a stale mock or schema drift.
 - Set `retries=0` on agents (shown in `SKILL.md`) so failures surface immediately in tests rather than being masked by retries.

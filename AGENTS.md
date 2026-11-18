@@ -15,8 +15,8 @@ The main artifact is the `skills/` tree:
 - `project-scaffolding` - greenfield project generation from the BoilerplateBuilder template (new services only)
 
 The house rules for authoring those skills live in `.claude/skills/skill-writer/SKILL.md`.
-It is a repo-local Claude Code skill (`/skill-writer` inside this checkout), not part of the
-published plugin: every plugin manifest points at `skills/`, so nothing under `.claude/` ships.
+Claude Code discovers it as `/skill-writer` inside this checkout. Installers can copy the
+whole repository, but the plugin manifests register only the seven skills under `skills/`.
 
 ## If You Are an AI Agent
 

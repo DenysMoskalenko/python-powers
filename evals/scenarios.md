@@ -59,6 +59,7 @@ Each skill section starts with a `### Triggering` block that tests discovery —
 
 **Should load**:
 - "Refactor this service, it's gotten messy" (any Python code change)
+- "Add `PATCH /v1/authors/{author_id}`; omitted fields keep their values" (loads alongside `fastapi-service`)
 - "Review this module for code quality"
 - "Is `dict[str, Any]` fine for this payload?"
 - "Write a function that merges these two config objects"
@@ -67,7 +68,6 @@ Each skill section starts with a `### Triggering` block that tests discovery —
 **Should not load**:
 - "Change the ruff config to 120-char lines" → `python-tooling` (no application code is written)
 - "ruff keeps flagging UP007 and UP035 — disable the rules or fix the code?" → `python-tooling` (a tool configuration question)
-- "Add `PATCH /v1/authors/{author_id}`; omitted fields keep their values" → `fastapi-service`
 - "Write the README for this service" → no skill (prose, not Python code)
 
 ### Eval 1 — Reject `Any` and raw `dict`
@@ -516,22 +516,25 @@ Each skill section starts with a `### Triggering` block that tests discovery —
 
 ### Eval 4 — Write transaction boundary
 
-**Prompt**: "Write `BookService.create_author` for a normal POST endpoint."
+**Prompt**: "Write `AuthorService.create_author` for POST /authors. Concurrent requests that create the same author should return one 201 and one 409."
 
 **Must produce**:
-- `insert(AuthorModel).values(**creation.model_dump()).returning(AuthorModel)` executed with `await self._session.scalar(query)`, returning `Author.model_validate(author)`
+- An insert returning the created author. The write uses a shared helper that translates a psycopg `UniqueViolation` in `IntegrityError.orig` into `AlreadyExistError`. Other integrity errors propagate.
 
 **Must not produce**:
+- An author-specific exception translator or a hardcoded constraint name to produce the generic 409
 - `commit()` or `rollback()` in the request-scoped service
 - `async with self._session.begin_nested():` around the single statement, or a `flush()` before reading the row back
 
 ### Eval 5 — Paginated list with filters
 
-**Prompt**: "Add a paginated `list_books` returning each book with its author, filtered by optional ids, a case-insensitive title substring, and a `created_from` timestamp."
+**Prompt**: "Add a paginated `list_books` returning each book with its author, filtered by optional ids, a case-insensitive title substring, and inclusive `created_from` and `created_to` timestamps."
 
 **Must produce**:
 - `select(BookModel).options(selectinload(BookModel.author))` with the clauses in `_apply_filters(self, query: Select, filters: BookListFilters) -> Select`
-- `BookModel.title.icontains(filters.title, autoescape=True)` and `BookModel.created_at >= filters.created_from` against the `DateTime(timezone=True)` column
+- Omitted IDs leave the query unrestricted by ID. An empty list selects no rows.
+- `BookModel.title.icontains(filters.title, autoescape=True)` and inclusive lower and upper bounds on the `DateTime(timezone=True)` column
+- Both bounds accept timestamps with UTC offsets and reject date-only or timezone-naive inputs.
 - `apaginate(self._session, query, params=pagination_params, transformer=...)` with a class-level `TypeAdapter[list[BookWithAuthor]]` built once per process
 
 **Must not produce**:
@@ -633,24 +636,23 @@ Each skill section starts with a `### Triggering` block that tests discovery —
 **Prompt**: "Wire the catalog assistant into a POST endpoint with per-request model choice."
 
 **Must produce**:
-- `async def get_catalog_assistant_agent(payload, model_registry: Annotated[ModelRegistry, Depends(get_model_registry)])` beside the builder in `agents.py`, returning `build_catalog_assistant_agent(model_registry[payload.model])`
+- A dependency beside the builder in `agents.py` that accepts the payload and injected model registry and returns `build_catalog_assistant_agent(model_registry[payload.model])`
 - Route injecting `Annotated[Agent[...], Depends(get_catalog_assistant_agent)]` and calling `service.answer(payload, agent)`, which runs `agent.run(payload.question, deps=..., usage_limits=CATALOG_ASSISTANT_USAGE_LIMITS)`
 
 **Must not produce**:
 - The agent constructed inside the route, or held as a service attribute
-- A synchronous `def` dependency, or `agent.run(...)` with no `usage_limits`
+- `agent.run(...)` with no `usage_limits`
 
 ### Eval 4 — Model registry and failover
 
 **Prompt**: "Callers should be able to ask for a fast model, and the default should fail over to it when the primary provider is down."
 
 **Must produce**:
-- `AssistantModelName.DEFAULT` / `AssistantModelName.FAST` in `app/core/enums.py`, model ids as plain `str` settings, and `FallbackModel(default_model, fast_model)` for `DEFAULT` in `app/infrastructure/llms/registry.py`
-- Provider knobs passed as `settings=` on the `Model`, as in `OpenAIResponsesModel(..., settings=OpenAIResponsesModelSettings(...))`
+- The two selectable models named in `AIModelName`. The registry entry for the default model wraps the two providers in `FallbackModel` in the requested order.
+- A simulated primary provider failure that returns the alternate model's response.
 
 **Must not produce**:
-- `isinstance(model, BedrockConverseModel)` or any provider branch in the builder
-- Provider model ids as `Literal[...]` in `Settings`, or hardcoded in the domain
+- Model IDs hardcoded in the domain, or a role such as `FAST` used as the model identifier
 
 ### Eval 5 — Happy-path test
 
@@ -658,10 +660,10 @@ Each skill section starts with a `### Triggering` block that tests discovery —
 
 **Must produce**:
 - `pytest_configure` setting `ALLOW_MODEL_REQUESTS = False`, which is read per request, so constructing a real model in a test stays fine
-- A fixture from `generate_test_agent(app, get_catalog_assistant_agent, build_catalog_assistant_agent)`, and `TestModel(custom_output_args=CatalogAssistantResponse(answer=answer).model_dump(mode='json'), call_tools=[])` inside `agent.override(model=...)`
+- A fixture from `generate_test_agent(app, get_catalog_assistant_agent, build_catalog_assistant_agent)` and a deterministic `agent.override(model=...)` that returns the expected answer
 
 **Must not produce**:
-- A hand-rolled `ModelResponse` matching an output tool by name or index
+- Choosing between multiple output tools by their shared property names
 - A test that reaches a real provider
 
 ### Eval 6 — Provider error mapping
@@ -817,8 +819,8 @@ Not applicable — `skill-writer` lives in `.claude/skills/`, outside the packag
 **Prompt**: "Build me an app called 'Book Catalog API' that serves books with search and CRUD."
 
 **Must produce**:
-- `uv tool run cookiecutter https://github.com/DenysMoskalenko/BoilerplateBuilder --checkout 492fc9b1e752a761e6a65182626502b8569e8143 --no-input` with `project_type=fastapi_db` passed explicitly
-- `project_name="book-catalog-api"`, `project_description` from the conversation, `author_name` / `author_email` from `git config`, the template and pinned revision named before the run, and the revision plus the `make check` result reported after it
+- `uv tool run cookiecutter https://github.com/DenysMoskalenko/BoilerplateBuilder --no-input` with `project_type=fastapi_db` passed explicitly
+- `project_name="book-catalog-api"`, `project_description` from the conversation, `author_name` / `author_email` from `git config`, the template named before generation, and the generated project’s quality-check result reported afterwards
 
 **Must not produce**:
 - Hand-assembled `app/`, `pyproject.toml`, Docker, or CI
@@ -852,7 +854,7 @@ Not applicable — `skill-writer` lives in `.claude/skills/`, outside the packag
 **Prompt**: "Spin up a tiny webhook receiver service, no database, nothing fancy."
 
 **Must produce**:
-- `project_type=fastapi_slim` passed explicitly, with the baseline inputs (`python_version=3.13`, `use_github_actions=yes`, OTEL off) left at their defaults
+- All selected inputs passed explicitly, including `project_type=fastapi_slim`, `python_version=3.14`, `use_github_actions=yes`, `use_otel_observability=yes`, and `generate_local_otel_stack=yes`
 
 **Must not produce**:
 - The user interrogated about Python version, hooks, or OTEL after "nothing fancy"; `fastapi_db` / `fastapi_db_agent`; `generate_local_otel_stack=yes` without `use_otel_observability=yes`
@@ -862,20 +864,20 @@ Not applicable — `skill-writer` lives in `.claude/skills/`, outside the packag
 **Prompt**: "I ran `git init` in an empty folder `orders-svc` and I'm in it — set up a new orders API with a database right here."
 
 **Must produce**:
-- `extract_to_current_dir="Extract Here"` and `initialize_git=no` alongside `project_type=fastapi_db` and `--no-input`
+- Generate into a temporary directory outside any Git worktree using `Create New`, `initialize_git=no`, `project_type=fastapi_db` and `--no-input`.
+- Verify the destination still contains only `.git`. Transfer the project and its dotfiles, omitting `.git` and `.venv`, then run `uv sync` at the final path.
+- Install the generated project's pre-commit hook in the destination if `core.hooksPath` is unset and the default pre-commit hook path is unoccupied. Otherwise explain why installation was skipped.
 
 **Must not produce**:
-- The `Create New` default, which nests the project at `orders-svc/orders-svc`
-- `initialize_git=yes` in a directory that already carries `.git`
+- Generation directly inside the initialized repository, a nested `orders-svc/orders-svc`, or any change to the destination’s existing Git hooks
 
 ### Eval 6 — After generation
 
 **Prompt**: "The generator finished. What now?"
 
 **Must produce**:
-- `make check` in the project root, and the revision used reported alongside its result
-- The sample domains replaced: delete `app/domains/examples` (or `examples_agent`) and the shipped `add_example_model` revision under `migrations/versions/`, then `uv run alembic revision --autogenerate` for a fresh initial migration; `app/domains/health_checks` stays
+- The generated project’s quality checks run from its root, followed by the domain skills for the selected project type
 
 **Must not produce**:
-- First-time setup from `python-tooling` redone — `.env`, `uv lock && uv sync`, ruff, the initial commit and `prek install` already ran in the hook
+- Regenerating the same inputs to fix a failing quality check
 - Feature code written while `make check` is red

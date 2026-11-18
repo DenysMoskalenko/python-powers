@@ -132,17 +132,48 @@ def check_skill(skill: Path) -> list[str]:
     return [f'{skill.name}: {problem}' for problem in problems]
 
 
-def check_manifests() -> list[str]:
+def check_marketplace_source(root: Path, name: str, plugins: list[dict]) -> list[str]:
+    entries = [entry for entry in plugins if entry['name'] == 'python-powers']
+    if len(entries) != 1:
+        return [f'{name}: expected one python-powers entry']
+    source = entries[0]['source']
+    if name.startswith('.agents/'):
+        source = source['path'] if source['source'] == 'local' else None
+    if not isinstance(source, str) or not source or Path(source).is_absolute():
+        return [f'{name}: expected a local relative path for python-powers']
+    if (root / source).resolve(strict=True) != root.resolve():
+        return [f'{name}: python-powers source must resolve to the plugin root']
+    return []
+
+
+def check_manifests(root: Path = ROOT) -> list[str]:
     problems = []
+    versions: dict[str, str] = {}
     for name in MANIFESTS:
         try:
-            data = json.loads((ROOT / name).read_text())
-        except (OSError, json.JSONDecodeError) as exc:
+            data = json.loads((root / name).read_text())
+            if name.endswith('/marketplace.json'):
+                problems.extend(check_marketplace_source(root, name, data['plugins']))
+                if name.startswith('.agents/'):
+                    continue
+                data = data['metadata']
+            else:
+                if data['name'] != 'python-powers':
+                    problems.append(f'{name}: plugin name must match the python-powers marketplace entry')
+                skills_path = data.get('skills')
+                if not isinstance(skills_path, str) or not skills_path.strip():
+                    problems.append(f'{name}: set "skills" to the plugin’s skills directory')
+                elif not (root / skills_path).is_dir():
+                    problems.append(f'{name}: skills path {skills_path!r} does not exist')
+            version = data['version']
+            if isinstance(version, str) and version:
+                versions[name] = version
+            else:
+                problems.append(f'{name}: missing plugin version')
+        except (OSError, KeyError, TypeError, ValueError, RuntimeError) as exc:
             problems.append(f'{name}: {exc}')
-            continue
-        skills_path = data.get('skills')
-        if skills_path is not None and not (ROOT / skills_path).is_dir():
-            problems.append(f'{name}: skills path {skills_path!r} does not exist')
+    if len(set(versions.values())) > 1:
+        problems.append('plugin versions differ: ' + ', '.join(f'{name}={version}' for name, version in versions.items()))
     return problems
 
 

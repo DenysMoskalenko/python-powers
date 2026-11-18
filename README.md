@@ -38,7 +38,7 @@ Typical combinations:
 | Build a FastAPI endpoint backed by PostgreSQL | `python-code-style`, `fastapi-service`, `postgres-database`, `python-testing` |
 | Add an AI assistant endpoint to a service | `python-code-style`, `fastapi-service`, `ai-agents`, `python-testing` |
 | Change linting, typing, dependencies, or test commands | `python-tooling` |
-| Edit one of this repository's skills | [`.claude/skills/skill-writer`](.claude/skills/skill-writer/SKILL.md) (repo-local, not shipped) plus the skill being changed |
+| Edit one of this repository's skills | [`.claude/skills/skill-writer`](.claude/skills/skill-writer/SKILL.md) (contributor skill in this checkout) plus the skill being changed |
 
 ## Install As A Claude Code Plugin
 
@@ -97,13 +97,13 @@ In a Cursor Agent chat, run:
 /add-plugin python-powers@https://github.com/DenysMoskalenko/python-powers
 ```
 
-For local testing, copy or symlink this repository to:
+For local testing, copy or clone the repository directly into this directory:
 
 ```text
 ~/.cursor/plugins/local/python-powers
 ```
 
-Then restart Cursor or run `Developer: Reload Window`.
+Restart Cursor or run `Developer: Reload Window`, then check that all seven skills appear in Customize. Cursor skips symlinks that point outside its local plugins directory. [Cursor local testing guide](https://cursor.com/docs/plugins#test-plugins-locally)
 
 ## Principles
 
@@ -119,7 +119,7 @@ Changes should improve shared, reusable Python engineering guidance. Good contri
 
 Avoid adding app-specific conventions, one-off team workflows, unproven tool recommendations, or claims about CI and release processes that are not represented in this repository.
 
-When changing a skill, read [`.claude/skills/skill-writer/SKILL.md`](.claude/skills/skill-writer/SKILL.md) first and keep the edit scoped to that skill's ownership. That skill is a repo-local Claude Code skill for contributors and is not part of the published plugin.
+When changing a skill, read [`.claude/skills/skill-writer/SKILL.md`](.claude/skills/skill-writer/SKILL.md) first and keep the edit scoped to that skill's ownership. Claude Code discovers this contributor skill inside the checkout. Each plugin manifest registers only the skills under `skills/`.
 
 ## License
 

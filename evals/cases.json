@@ -186,6 +186,9 @@
     ],
     "must_not": [
       "def get_author_by_id[\\s\\S]{0,400}raise HTTPException"
+    ],
+    "files": [
+      "app/**/*.py"
     ]
   },
   {
@@ -212,6 +215,9 @@
       "joinedload\\(BookModel\\.tags\\)",
       "joinedload\\(BookModel\\.author\\)",
       "[\\w)]\\.unique\\(\\)"
+    ],
+    "files": [
+      "app/**/*.py"
     ]
   },
   {
@@ -241,6 +247,9 @@
     "must_not": [
       "= Column\\(",
       "lazy='select'|lazy=\"select\"|lazy='selectin'|lazy=\"selectin\""
+    ],
+    "files": [
+      "app/**/*.py"
     ]
   },
   {
@@ -267,6 +276,9 @@
       "common\\.py",
       "shared\\.py",
       "from app\\.\\w+\\.utils|from app\\.utils"
+    ],
+    "files": [
+      "app/**/*.py"
     ]
   },
   {
@@ -298,6 +310,9 @@
       "sqlite",
       "mock\\w*\\(\\s*AuthorService|patch\\([^)]*AuthorService",
       "factory_use_construct=False"
+    ],
+    "files": [
+      "tests/**/*.py"
     ]
   },
   {
@@ -316,7 +331,6 @@
     "forbid": [],
     "prompt": "Add python-json-logger as a runtime dependency and set up ruff plus pre-commit for this project including the standard hygiene hooks (we use uv). Write the config files and tell me the commands.",
     "must": [
-      "uv add ['\"]?python-json-logger",
       "repo: local",
       "uv run ruff",
       "line-length = 120",
@@ -328,6 +342,13 @@
       "astral-sh/ruff-pre-commit",
       "\\[tool\\.black\\]",
       "\\[tool\\.isort\\]"
+    ],
+    "files": [
+      "pyproject.toml",
+      ".pre-commit-config.yaml"
+    ],
+    "must_commands": [
+      "uv add(?!.* --(?:dev|group|optional)\\b)(?: --project(?:=| )(?:'[^']*'|\\S+))? '?python-json-logger(?![\\w.-])"
     ]
   },
   {
@@ -357,6 +378,9 @@
       "client\\.chat\\.completions",
       "openai\\.OpenAI\\(",
       "system_prompt="
+    ],
+    "files": [
+      "app/**/*.py"
     ]
   },
   {
@@ -381,6 +405,9 @@
     ],
     "must_not": [
       "Annotated\\[\\w*Filter\\w*, Depends\\("
+    ],
+    "files": [
+      "app/**/*.py"
     ]
   },
   {
@@ -407,6 +434,9 @@
     "must_not": [
       "_session\\.delete\\(",
       "self\\._session\\.commit\\(\\)"
+    ],
+    "files": [
+      "app/**/*.py"
     ]
   },
   {
@@ -432,6 +462,9 @@
       "monkeypatch\\.setenv",
       "get_settings\\.cache_clear\\(\\)",
       "os\\.environ\\['PROJECT_VERSION'\\]|os\\.environ\\[\"PROJECT_VERSION\"\\]"
+    ],
+    "files": [
+      "tests/**/*.py"
     ]
   },
   {
@@ -476,12 +509,16 @@
     "must": [
       "@\\w+\\.tool\\b",
       "@\\w+\\.tool\\b[^\\n]*\\n\\s*(?:async\\s+)?def\\s+\\w+\\([\\s\\S]{0,600}?\\)\\s*(?:->[^:\\n]+)?:\\s*(?:\"\"\"|''')",
-      "ge=1,\\s*le=100|le=100,\\s*ge=1"
+      "ge=1,\\s*le=100|le=100,\\s*ge=1",
+      "\\bFallbackModel\\s*\\("
     ],
     "must_not": [
       "system_prompt="
     ],
-    "note": "The skill names the tool docstring as the description the LLM sees; its own tool input example has no Field(description=)."
+    "note": "The skill names the tool docstring as the description the LLM sees; its own tool input example has no Field(description=).",
+    "files": [
+      "app/**/*.py"
+    ]
   },
   {
     "name": "beh-scaffold-command",
@@ -499,19 +536,26 @@
       "project-scaffolding"
     ],
     "forbid": [],
-    "prompt": "Set up a brand-new FastAPI service that stores orders in Postgres, right here in this empty directory. Do not run anything yet, just write out the exact command you would run.",
+    "prompt": "Set up a brand-new FastAPI service named \"Order Service\" that stores orders in Postgres. Generate a new project subdirectory in a fresh destination outside this checkout. Do not run anything. Show the one command you would run from that destination.",
     "must": [
-      "cookiecutter https://github\\.com/DenysMoskalenko/BoilerplateBuilder",
-      "project_type=[\"']?fastapi_db\\b",
-      "project_description=",
-      "author_name=",
-      "author_email=",
-      "--no-input"
+      "--no-input",
+      "project_type=fastapi_db",
+      "project_name=order-service",
+      "project_description=.+",
+      "author_name=.+",
+      "author_email=.+",
+      "python_version=3\\.14",
+      "use_otel_observability=yes",
+      "generate_local_otel_stack=yes",
+      "use_github_actions=yes",
+      "initialize_git=yes",
+      "extract_to_current_dir=Create New"
     ],
     "must_not": [
-      "use_pre_commit",
-      "project_type=[\"']?fastapi_db_agent"
-    ]
+      "use_pre_commit(?:=.*)?",
+      "project_type=fastapi_db_agent"
+    ],
+    "final_command": "(?:uv tool run|uvx) cookiecutter (?i:(?:https://github\\.com/|gh:)DenysMoskalenko/BoilerplateBuilder(?:\\.git)?/?)"
   },
   {
     "name": "beh-testcontainers-import",
@@ -530,11 +574,20 @@
     "forbid": [],
     "prompt": "Write tests/conftest.py for this FastAPI + Postgres service: start one PostgreSQL container per test session with testcontainers, and give each test an AsyncSession that is rolled back afterwards. Write the file.",
     "must": [
-      "from testcontainers\\.community\\.postgres import PostgresContainer"
+      "(?m)^[\\t ]*from testcontainers\\.community\\.postgres import PostgresContainer",
+      "\\bAsyncSession\\b|\\basync_sessionmaker\\s*\\(",
+      "\\byield\\s+\\w+"
     ],
     "must_not": [
-      "from testcontainers\\.postgres import"
-    ]
+      "(?m)^[\\t ]*from testcontainers\\.postgres import"
+    ],
+    "files": [
+      "tests/conftest.py"
+    ],
+    "fixture_scopes": {
+      "session": "\\bPostgresContainer\\s*\\(",
+      "function": "await\\s+[\\w.]+\\.rollback\\s*\\("
+    }
   },
   {
     "name": "beh-sorting-frozen",
@@ -556,7 +609,11 @@
       "frozen=True",
       "Literal\\[\\s*['\"]title['\"]"
     ],
-    "must_not": []
+    "must_not": [],
+    "files": [
+      "app/core/schemas.py",
+      "app/domains/**/*.py"
+    ]
   },
   {
     "name": "beh-router-direct",
@@ -580,6 +637,9 @@
     "must_not": [
       "APIRouter\\([^)]*prefix=['\"]/v1['\"]",
       "\\b(?!\\w*app\\.include)\\w+\\.include_router\\("
+    ],
+    "files": [
+      "app/**/*.py"
     ]
   },
   {
@@ -604,6 +664,10 @@
     "must_not": [
       "pip-audit|pip_audit",
       "safety (?:check|scan)"
+    ],
+    "files": [
+      ".pre-commit-config.yaml",
+      ".github/workflows/*.y*ml"
     ]
   },
   {
@@ -629,6 +693,9 @@
     ],
     "must_not": [
       "import[^\\n]*\\b(?:RateLimitError|APITimeoutError|APIConnectionError|ClientError)\\b"
+    ],
+    "files": [
+      "app/core/exception_handlers.py"
     ]
   },
   {
@@ -924,6 +991,9 @@
       "except Exception",
       "datetime\\.utcnow\\(",
       "os\\.path"
+    ],
+    "files": [
+      "app/domains/orders/pricing.py"
     ]
   },
   {
@@ -948,6 +1018,9 @@
     ],
     "must_not": [
       "field_validator|model_validator"
+    ],
+    "files": [
+      "app/domains/authors/schemas.py"
     ]
   }
 ]

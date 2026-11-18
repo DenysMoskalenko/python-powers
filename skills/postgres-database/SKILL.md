@@ -62,7 +62,7 @@ Key rules:
 - `Mapped[]` for all columns — modern SQLAlchemy 2.0 style
 - `DateTime(timezone=True)` with `server_default=func.now()` for timestamps — DB generates the value; a naive column hands back naive datetimes that cannot be compared with `datetime.now(UTC)`
 - Explicit `String(N)` lengths matching schema `max_length`
-- `UniqueConstraint` in `__table_args__` with descriptive `name` (Alembic needs stable names)
+- `UniqueConstraint` in `__table_args__` with a stable name for Alembic. PostgreSQL 15+ supports `postgresql_nulls_not_distinct=True` to treat missing birthdays as equal
 - `TYPE_CHECKING` guard for forward references in relationships — a string target (`'BookModel'`) resolves only against model modules already imported, so the app imports them all at startup (`load_all_models()` from `app/infrastructure/db/models/__init__.py`, called in `create_app()` as well as in `migrations/env.py`)
 - Every `relationship(...)` declares `lazy='raise'` — no implicit loading; see [Loading relationships](#loading-relationships)
 - `passive_deletes=True` needs `ondelete='CASCADE'` on the child `ForeignKey` — services delete with Core `delete()`, which bypasses ORM cascades, so without the DB rule the delete raises `IntegrityError`
@@ -117,46 +117,13 @@ If your PostgreSQL exposes native `uuidv7()` (PG 18+; the `pg_uuidv7` extension 
 
 ### Service Query Patterns
 
-Services accept `AsyncSession` via `Depends(get_session, scope='function')` and query directly:
-
-```python
-from sqlalchemy import delete, insert, select, update
-
-
-class AuthorService:
-    AUTHOR_LIST_ADAPTER: TypeAdapter[list[Author]] = TypeAdapter(list[Author])
-
-    def __init__(self, session: Annotated[AsyncSession, Depends(get_session, scope='function')]) -> None:
-        self._session = session
-
-    async def get_author_by_id(self, author_id: int) -> Author:
-        query = select(AuthorModel).filter(AuthorModel.id == author_id)
-        author = await self._session.scalar(query)
-        if author is None:
-            raise NotFoundError(f'Author(id={author_id}) not found')
-        return Author.model_validate(author)
-
-    async def create_author(self, creation: AuthorCreate) -> Author:
-        await self._validate_author_unique(creation)
-        query = insert(AuthorModel).values(**creation.model_dump()).returning(AuthorModel)
-        author = await self._session.scalar(query)
-        return Author.model_validate(author)
-
-    async def delete_author_by_id(self, author_id: int) -> None:
-        query = delete(AuthorModel).filter(AuthorModel.id == author_id).returning(AuthorModel.id)
-        deleted_author_id = await self._session.scalar(query)
-        if deleted_author_id is None:
-            _logger.info(
-                f'Author with id={author_id} not found but was requested for deletion',
-                extra={'extra': {'author_id': author_id}},
-            )
-```
+Services query through `AsyncSession` injected with `Depends(get_session, scope='function')`. See `references/service-queries.md` for the author read, create, update, and delete methods, including concurrent duplicate handling.
 
 - Request-scoped write methods that receive `get_session` do not call `commit()` or `rollback()`
 - `open_db_session()` or the caller-owned session defines the transaction boundary
 - Do not wrap single-statement CRUD writes in `begin_nested()`. Reach for it only when you need partial rollback inside a larger transaction — bulk import that should continue past a per-row failure, or catching `IntegrityError` and keeping the outer transaction usable. For test isolation against accidental `session.commit()` calls, use `join_transaction_mode='create_savepoint'` in the test session fixture, not service-level savepoints.
 - `insert(...).returning(Model)` — single query for insert+read
-- A uniqueness pre-check (`_validate_author_unique`) cannot see a concurrent transaction's uncommitted row; the constraint decides, and the losing request's write raises `IntegrityError`. Catch it in the service method that writes the row: raise `AlreadyExistError` when `exc.orig` is a `psycopg.errors.UniqueViolation`, re-raise anything else. Database exceptions get no handler in `app/core/exception_handlers.py`
+- Wrap a write in the shared `raise_on_duplicate()` when any duplicate key should produce a domain conflict. Other integrity errors propagate. Keep database exceptions out of HTTP handlers.
 - Domain exceptions (`NotFoundError`) — never `HTTPException` in services
 
 ### Loading relationships
@@ -256,12 +223,16 @@ def _apply_filters(self, query: Select, filters: AuthorListFilters) -> Select:
     if filters.name:
         full_name = func.concat(AuthorModel.first_name, ' ', AuthorModel.last_name)
         query = query.filter(full_name.icontains(filters.name, autoescape=True))
-    if filters.ids:
+    if filters.ids is not None:
         query = query.filter(AuthorModel.id.in_(filters.ids))
-    if filters.created_from:
+    if filters.created_from is not None:
         query = query.filter(AuthorModel.created_at >= filters.created_from)
+    if filters.created_to is not None:
+        query = query.filter(AuthorModel.created_at <= filters.created_to)
     return query
 ```
+
+Both timestamp bounds include the supplied instant. Require timezone-aware values in the filter schema so the comparison is independent of the database session’s time zone.
 
 ### Migrations
 

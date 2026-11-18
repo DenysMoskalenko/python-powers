@@ -220,6 +220,8 @@ Calling session methods such as `execute()` without the `session` fixture raises
 
 ## App and Client Fixtures
 
+This example uses a database. For slim and agent-only services, omit the `_engine` parameter and the database override (`override_app_test_dependencies` above).
+
 ```python
 @pytest.fixture(scope='session')
 async def app(_engine: AsyncEngine) -> AsyncGenerator[FastAPI]:
@@ -236,6 +238,8 @@ async def client(app: FastAPI) -> AsyncGenerator[AsyncClient]:
 ```
 
 Session-scoped — one app and client per test session. The `_engine` dependency comes from the database skill's fixtures. Session-scoped async fixtures need both session loop-scope settings in the pytest configuration (see `python-tooling`); without them tests and fixtures run on different event loops.
+
+The HTTP transport does not run ASGI lifespan events. If a test needs startup resources or state yielded by lifespan, add `asgi-lifespan` to the test dependencies. In the client fixture wrap the `AsyncClient` block in `async with LifespanManager(app) as manager:` (from `asgi_lifespan`) and use `ASGITransport(app=manager.app)`. Startup then runs before the request, and shutdown runs when the fixture exits.
 
 ## Coverage
 
