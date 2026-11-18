@@ -1,6 +1,6 @@
 # Author service queries
 
-Define `translate_unique_violation` once in `app/infrastructure/db/database.py`. Use it around a write when any duplicate key should produce the same conflict response.
+Define `raise_on_duplicate` once in `app/infrastructure/db/database.py`. Use it around a write when any duplicate key should produce the same conflict response.
 
 ```python
 from collections.abc import Iterator
@@ -13,7 +13,7 @@ from app.core.exceptions import AlreadyExistError
 
 
 @contextmanager
-def translate_unique_violation() -> Iterator[None]:
+def raise_on_duplicate() -> Iterator[None]:
     try:
         yield
     except IntegrityError as exc:
@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AlreadyExistError, NotFoundError
 from app.domains.authors.schemas import Author, AuthorCreate, AuthorUpdate
-from app.infrastructure.db.database import get_session, translate_unique_violation
+from app.infrastructure.db.database import get_session, raise_on_duplicate
 from app.infrastructure.db.models.author import AuthorModel
 
 _logger = getLogger(__name__)
@@ -59,7 +59,7 @@ class AuthorService:
     async def create_author(self, creation: AuthorCreate) -> Author:
         await self._validate_author_unique(creation)
         query = insert(AuthorModel).values(**creation.model_dump()).returning(AuthorModel)
-        with translate_unique_violation():
+        with raise_on_duplicate():
             author = await self._session.scalar(query)
         return Author.model_validate(author)
 
@@ -67,7 +67,7 @@ class AuthorService:
         await self.get_author_by_id(author_id)
         await self._validate_author_unique(updates, exclude_author_id=author_id)
         query = update(AuthorModel).filter(AuthorModel.id == author_id).values(**updates.model_dump())
-        with translate_unique_violation():
+        with raise_on_duplicate():
             author = await self._session.scalar(query.returning(AuthorModel))
         if author is None:
             raise NotFoundError(f'Author(id={author_id}) not found')

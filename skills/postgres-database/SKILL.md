@@ -123,7 +123,7 @@ Services query through `AsyncSession` injected with `Depends(get_session, scope=
 - `open_db_session()` or the caller-owned session defines the transaction boundary
 - Do not wrap single-statement CRUD writes in `begin_nested()`. Reach for it only when you need partial rollback inside a larger transaction — bulk import that should continue past a per-row failure, or catching `IntegrityError` and keeping the outer transaction usable. For test isolation against accidental `session.commit()` calls, use `join_transaction_mode='create_savepoint'` in the test session fixture, not service-level savepoints.
 - `insert(...).returning(Model)` — single query for insert+read
-- Wrap a write in the shared `translate_unique_violation()` when any duplicate key should produce a domain conflict. Other integrity errors propagate. Keep database exceptions out of HTTP handlers.
+- Wrap a write in the shared `raise_on_duplicate()` when any duplicate key should produce a domain conflict. Other integrity errors propagate. Keep database exceptions out of HTTP handlers.
 - Domain exceptions (`NotFoundError`) — never `HTTPException` in services
 
 ### Loading relationships
