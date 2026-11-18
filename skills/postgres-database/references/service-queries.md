@@ -1,38 +1,46 @@
 # Author service queries
 
-The author identity is the full name and birthday. The pre-check gives an early domain error for a visible duplicate. A concurrent duplicate can still pass that check. Both writes translate the specific constraint violation, and the session provider rolls back the failed transaction.
+Define `translate_unique_violation` once in `app/infrastructure/db/database.py`. Use it around a write when any duplicate key should produce the same conflict response.
 
 ```python
 from collections.abc import Iterator
 from contextlib import contextmanager
+
+from psycopg.errors import UniqueViolation
+from sqlalchemy.exc import IntegrityError
+
+from app.core.exceptions import AlreadyExistError
+
+
+@contextmanager
+def translate_unique_violation() -> Iterator[None]:
+    try:
+        yield
+    except IntegrityError as exc:
+        if isinstance(exc.orig, UniqueViolation):
+            raise AlreadyExistError() from exc
+        raise
+```
+
+The author pre-check gives the client the full name and birthday when it finds an existing match. If the write hits a unique constraint, the HTTP handler returns status 409 with `{"detail": "Conflict"}`. If the API needs only a generic conflict, omit the pre-check query. The session provider owns rollback.
+
+The model uses an immediate unique constraint. A deferred constraint can fail at commit. To translate that failure, wrap the transaction including its commit when every duplicate in that transaction has the same meaning.
+
+```python
 from logging import getLogger
 from typing import Annotated
 
 from fastapi import Depends
-from psycopg.errors import UniqueViolation
 from pydantic import TypeAdapter
 from sqlalchemy import delete, insert, select, update
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AlreadyExistError, NotFoundError
 from app.domains.authors.schemas import Author, AuthorCreate, AuthorUpdate
-from app.infrastructure.db.database import get_session
+from app.infrastructure.db.database import get_session, translate_unique_violation
 from app.infrastructure.db.models.author import AuthorModel
 
 _logger = getLogger(__name__)
-
-
-@contextmanager
-def _translate_author_conflict(creation: AuthorCreate) -> Iterator[None]:
-    try:
-        yield
-    except IntegrityError as exc:
-        if isinstance(exc.orig, UniqueViolation) and exc.orig.diag.constraint_name == 'uq_authors_full_name_birthday':
-            raise AlreadyExistError(
-                f'Author(name={creation.first_name} {creation.last_name}, birthday={creation.birthday}) already exists'
-            ) from exc
-        raise
 
 
 class AuthorService:
@@ -51,7 +59,7 @@ class AuthorService:
     async def create_author(self, creation: AuthorCreate) -> Author:
         await self._validate_author_unique(creation)
         query = insert(AuthorModel).values(**creation.model_dump()).returning(AuthorModel)
-        with _translate_author_conflict(creation):
+        with translate_unique_violation():
             author = await self._session.scalar(query)
         return Author.model_validate(author)
 
@@ -59,7 +67,7 @@ class AuthorService:
         await self.get_author_by_id(author_id)
         await self._validate_author_unique(updates, exclude_author_id=author_id)
         query = update(AuthorModel).filter(AuthorModel.id == author_id).values(**updates.model_dump())
-        with _translate_author_conflict(updates):
+        with translate_unique_violation():
             author = await self._session.scalar(query.returning(AuthorModel))
         if author is None:
             raise NotFoundError(f'Author(id={author_id}) not found')

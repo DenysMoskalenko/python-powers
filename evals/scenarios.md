@@ -519,9 +519,10 @@ Each skill section starts with a `### Triggering` block that tests discovery —
 **Prompt**: "Write `AuthorService.create_author` for POST /authors. Concurrent requests that create the same author should return one 201 and one 409."
 
 **Must produce**:
-- An insert returning the created author. Only a `UniqueViolation` for `uq_authors_full_name_birthday` inside `IntegrityError.orig` becomes `AlreadyExistError`. Other integrity errors propagate.
+- An insert returning the created author. The write uses a shared helper that translates a psycopg `UniqueViolation` in `IntegrityError.orig` into `AlreadyExistError`. Other integrity errors propagate.
 
 **Must not produce**:
+- An author-specific exception translator or a hardcoded constraint name to produce the generic 409
 - `commit()` or `rollback()` in the request-scoped service
 - `async with self._session.begin_nested():` around the single statement, or a `flush()` before reading the row back
 
