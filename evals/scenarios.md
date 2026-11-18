@@ -534,6 +534,7 @@ Each skill section starts with a `### Triggering` block that tests discovery —
 - `select(BookModel).options(selectinload(BookModel.author))` with the clauses in `_apply_filters(self, query: Select, filters: BookListFilters) -> Select`
 - Omitted IDs leave the query unrestricted by ID. An empty list selects no rows.
 - `BookModel.title.icontains(filters.title, autoescape=True)` and inclusive lower and upper bounds on the `DateTime(timezone=True)` column
+- Both bounds accept timestamps with UTC offsets and reject date-only or timezone-naive inputs.
 - `apaginate(self._session, query, params=pagination_params, transformer=...)` with a class-level `TypeAdapter[list[BookWithAuthor]]` built once per process
 
 **Must not produce**:
@@ -865,6 +866,7 @@ Not applicable — `skill-writer` lives in `.claude/skills/`, outside the packag
 **Must produce**:
 - Generate into a temporary directory outside any Git worktree using `Create New`, `initialize_git=no`, `project_type=fastapi_db` and `--no-input`.
 - Verify the destination still contains only `.git`. Transfer the project and its dotfiles, omitting `.git` and `.venv`, then run `uv sync` at the final path.
+- Install the generated project's pre-commit hook in the destination if `core.hooksPath` is unset and the default pre-commit hook path is unoccupied. Otherwise explain why installation was skipped.
 
 **Must not produce**:
 - Generation directly inside the initialized repository, a nested `orders-svc/orders-svc`, or any change to the destination’s existing Git hooks

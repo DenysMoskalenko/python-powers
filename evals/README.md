@@ -4,7 +4,7 @@ Runnable trigger and behaviour checks for the skills in `skills/`. They answer t
 
 ## Prerequisites
 
-- Python 3.11+. The stock macOS `/usr/bin/python3` is older and the runner exits with a version message.
+- Python 3.14+ for the full suite. Selections without fixture-scope checks also run on Python 3.11–3.13.
 - An authenticated `claude` CLI, verified against 2.1.310. `--max-turns` is a hidden flag (absent from `claude --help`, still supported); if a CLI upgrade drops it, every run errors at once.
 - Budget. A full default run is 65 arms — 25 trigger cases plus 20 behaviour cases in two arms — about $15 on the default model, scaling with `--runs`. Per run, roughly $0.05–0.6.
 
@@ -39,7 +39,7 @@ Graded artefacts land in `evals/results/<stamp>/` (gitignored): per run the raw 
 
 `claude plugin eval` covers the same ground, but it reads `**/case.yaml` or `prompt.md` + `graders/*.md` suites under `evals/`, not `cases.json`; the cases here carry the same information so they can be ported.
 
-For a paid comparison, get approval and use the same affected cases, model, settings and repetitions on the previous and candidate revisions. Record both plugin SHAs, the case-suite SHA and the resolved model in the stream’s initialization event.
+For a paid comparison, get approval and use the same affected cases, model, settings and repetitions on the previous and candidate revisions. Record both plugin commit SHAs and the case-suite commit SHA alongside the comparison results. Copy the resolved model name from the CLI’s `system` / `init` event in each saved transcript.
 
 ## Case format (`cases.json`)
 
@@ -63,15 +63,15 @@ For a paid comparison, get approval and use the same affected cases, model, sett
 - `arms`: `with` loads the plugin; `without` disables the `Skill` tool. Trigger cases use `["with"]`.
 - `cwd`: `fixture` (default) or `empty` for greenfield prompts.
 - `expect` / `forbid`: skills that must fire / must not fire in the `with` arm (names without the `python-powers:` prefix). `forbid` is graded on routing order: a forbidden skill fails the case only when it fires before the first expected skill, because an agent legitimately loads a sibling later as a helper (a database task that then writes tests loads `python-testing` too).
-- `files` lists required worktree-relative paths or globs. Each must match at least one new or changed file at the end of the run. `must` and `must_not` regexes search each matching path and its final contents together. The saved `*.code.txt` contains the graded evidence.
-- `final_command` gives the command prefix for a plan-only case. The final answer must present exactly one matching shell command on its own line. Backslash continuations and shell quoting are supported. Each `must` or `must_not` regex matches a whole argument of that command. Conflicting or repeated assignments fail the case. Surrounding prose and earlier attempts do not affect the grade.
-- `fixture_scopes` maps each required pytest fixture scope to a regex for its implementation. The grader inspects the fixture and local helper functions it calls without importing generated code. Omitted scope means function scope. Use a grader interpreter that can parse the generated project’s Python syntax (currently Python 3.14).
+- `files` lists required worktree-relative paths or globs. Each must match a new or changed text file at the end of the run. `must` searches those paths and their final contents. `must_not` also searches changed text files outside the globs. The grader skips Git metadata, virtual environments, tool caches, and symlinks. The saved `*.code.txt` contains the graded evidence.
+- `final_command` is a regex for the command prefix in a plan-only answer. The final answer must present one matching command. It may start with `cd DIR &&` and use backslash continuations or shell quoting. Each `must` or `must_not` regex matches a whole argument. Conflicting or repeated assignments fail the case.
+- `fixture_scopes` maps each required pytest fixture scope to a regex for its implementation. The grader inspects the fixture and local helper functions it calls without importing generated code. Omitted scope means function scope. A syntax error in a generated fixture is reported with its path and line number.
 - `must_commands` checks commands that a mixed file-and-command task also asks for. A command presented on its own line in the final response or attempted with Bash counts even when execution is denied.
 - Cases without `files` or `final_command` retain transcript grading. Their `must` regexes may match Write/Edit payloads, fenced code or attempted Bash commands. Their `must_not` regexes search each Write/Edit payload separately.
 - `note`: free text the runner ignores. Use it to record couplings, such as a pinned SHA that also lives in a skill.
 
-Unknown keys, duplicate case names and repeated patterns are rejected when the file loads.
+The runner validates case fields and compiles regexes before starting any model sessions.
 
-Run the grader regression tests locally with `uv run --with pyyaml python -m unittest discover -s evals`. They use temporary workspaces and make no model requests.
+Run all offline tests with `uv run --python 3.14 --with pyyaml python -m unittest discover -s evals`. The `test-eval-grader` prek hook runs the grader tests when its inputs change.
 
 Add a case for every rule that exists because an agent got it wrong; keep prompts substantive and realistic (one-step questions rarely trigger any skill). `.claude/skills/skill-writer` is the one skill with no cases: it is `disable-model-invocation: true`, so it never fires on its own and a trigger case could not pass; its behaviour scenarios stay manual for now. The human-readable specification the cases derive from is `evals/scenarios.md`.

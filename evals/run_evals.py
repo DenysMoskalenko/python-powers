@@ -15,7 +15,8 @@ Usage examples::
     python3 evals/run_evals.py --tag trigger --runs 3      # all trigger cases, three runs each
     python3 evals/run_evals.py --model haiku --arms with   # cheaper model for smoke runs
 
-Requires Python 3.11+ and an authenticated ``claude`` CLI (verified against 2.1.310).
+The full suite requires Python 3.14+. Selections without fixture-scope checks run on 3.11+.
+Model runs require an authenticated ``claude`` CLI (verified against 2.1.310).
 ``claude plugin eval`` is the upstream equivalent, but it reads ``case.yaml`` / ``prompt.md`` suites,
 not ``cases.json``; the cases carry the same information so they can be ported.
 """
@@ -24,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 import json
 import os
@@ -41,6 +43,7 @@ EVALS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EVALS_DIR.parent
 FIXTURE_DIR = EVALS_DIR / 'fixture'
 CODE_FENCE = re.compile(r'```[\w+-]*\n(.*?)```', re.S)
+SHELL_SYNTAX = re.compile(r"""\\.|'[^']*'|"(?:\\.|[^"\\])*"|(?P<comment>(?<!\S)\#.*)|(?P<operator>[;&|]+)""")
 # No Bash(cat:*): a `cat > file <<EOF` heredoc writes code the transcript grader never sees.
 # Bash(uv --version): a denied version probe reads as "uv is not installed" and the agent hand-edits pyproject.toml.
 ALLOWED_TOOLS = ['Skill', 'Read', 'Glob', 'Grep', 'Write', 'Edit', 'Bash(ls:*)', 'Bash(find:*)', 'Bash(uv --version)']
@@ -103,34 +106,77 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def validate_pattern(name: str, key: str, pattern: str) -> None:
+    if not isinstance(pattern, str) or not pattern.strip():
+        raise SystemExit(f'cases.json: {name}.{key} must be a nonempty regex string')
+    try:
+        re.compile(pattern)
+    except (re.error, OverflowError, RecursionError) as exc:
+        raise SystemExit(f'cases.json: {name}.{key} has invalid regex {pattern!r}: {exc}') from exc
+
+
 def validate_cases(cases: list[dict]) -> None:
-    """Reject the mistakes that would otherwise grade nothing and report a pass."""
+    """Reject invalid case definitions before launching any paid run."""
+    if not isinstance(cases, list):
+        raise SystemExit('cases.json: expected a list of cases')
     seen: set[str] = set()
     for index, case in enumerate(cases):
+        if not isinstance(case, dict):
+            raise SystemExit(f'cases.json: case #{index} must be an object')
         missing = {'name', 'prompt'} - set(case)
         if missing:
             raise SystemExit(f'cases.json: case #{index} is missing {sorted(missing)}')
+        for key in ('name', 'prompt'):
+            if not isinstance(case[key], str) or not case[key].strip():
+                raise SystemExit(f'cases.json: case #{index}.{key} must be a nonempty string')
         name, unknown = case['name'], sorted(set(case) - CASE_KEYS)
+        if Path(name).name != name or name == '..' or '\x00' in name:
+            raise SystemExit(f'cases.json: invalid case name {name!r}')
         if unknown:
             raise SystemExit(f'cases.json: {name} has unknown keys {unknown}; allowed: {sorted(CASE_KEYS)}')
         if name in seen:
             raise SystemExit(f'cases.json: duplicate case name {name}')
         seen.add(name)
+        for key in ('tags', 'arms', 'expect', 'forbid', 'files', 'must', 'must_not', 'must_commands'):
+            items = case.get(key, [])
+            if not isinstance(items, list) or not all(isinstance(item, str) and item.strip() for item in items):
+                raise SystemExit(f'cases.json: {name}.{key} must be a list of nonempty strings')
+        if 'arms' in case:
+            arms = case['arms']
+            if not arms or len(set(arms)) != len(arms) or set(arms) - {'with', 'without'}:
+                raise SystemExit(f'cases.json: {name}.arms must select with or without at most once each')
+        if case.get('cwd', 'fixture') not in ('fixture', 'empty'):
+            raise SystemExit(f'cases.json: {name}.cwd must be fixture or empty')
+        if 'max_turns' in case and (type(case['max_turns']) is not int or case['max_turns'] < 1):
+            raise SystemExit(f'cases.json: {name}.max_turns must be a positive integer')
         if 'files' in case:
-            files = case['files']
-            if not isinstance(files, list) or not files or not all(
-                isinstance(path, str) and path and not Path(path).is_absolute() and '..' not in Path(path).parts
-                for path in files
-            ):
-                raise SystemExit(f'cases.json: {name} needs a nonempty list of worktree-relative file patterns')
-        if 'fixture_scopes' in case and (not case.get('files') or not isinstance(case['fixture_scopes'], dict)):
-            raise SystemExit(f'cases.json: {name} needs files and a scope-to-pattern mapping for fixture_scopes')
-        if 'final_command' in case and ('files' in case or not case['final_command'].strip() or not case.get('must')):
-            raise SystemExit(f'cases.json: {name} needs one command with required arguments and no files')
+            if not case['files']:
+                raise SystemExit(f'cases.json: {name}.files must include a worktree-relative pattern')
+            for pattern in case['files']:
+                path = Path(pattern)
+                if (
+                    not path.parts or path.is_absolute() or '..' in path.parts or '\x00' in pattern
+                    or any('**' in part and part != '**' for part in path.parts)
+                ):
+                    raise SystemExit(f'cases.json: {name}.files has invalid worktree-relative glob {pattern!r}')
+        if 'fixture_scopes' in case:
+            scopes = case['fixture_scopes']
+            if not case.get('files') or not isinstance(scopes, dict) or not scopes:
+                raise SystemExit(f'cases.json: {name}.fixture_scopes needs files and a nonempty scope-to-pattern mapping')
+            for scope, pattern in scopes.items():
+                if scope not in ('session', 'package', 'module', 'class', 'function'):
+                    raise SystemExit(f'cases.json: {name}.fixture_scopes has unknown pytest scope {scope!r}')
+                validate_pattern(name, f'fixture_scopes.{scope}', pattern)
+        if 'final_command' in case:
+            if 'files' in case or not case.get('must'):
+                raise SystemExit(f'cases.json: {name}.final_command needs required arguments and no files')
+            validate_pattern(name, 'final_command', case['final_command'])
         for key in ('must', 'must_not', 'must_commands'):
             patterns = case.get(key, [])
             if len(set(patterns)) != len(patterns):
                 raise SystemExit(f'cases.json: {name} repeats a {key} pattern')
+            for pattern in patterns:
+                validate_pattern(name, key, pattern)
 
 
 def load_cases(args: argparse.Namespace) -> list[dict]:
@@ -144,6 +190,8 @@ def load_cases(args: argparse.Namespace) -> list[dict]:
     if args.tag:
         wanted = set(args.tag)
         cases = [case for case in cases if wanted & set(case.get('tags', []))]
+    if sys.version_info < (3, 14) and any('fixture_scopes' in case for case in cases):
+        raise SystemExit('Selected fixture_scopes cases need Python 3.14+ to parse generated Python 3.14 source.')
     return cases
 
 
@@ -250,49 +298,77 @@ def collect(stdout: str) -> Transcript:
     )
 
 
-def answer_lines(answer: str) -> list[str]:
-    logical_lines = answer.replace('\\\n', ' ').splitlines()
-    return [line.strip().strip('`').removeprefix('$ ').strip() for line in logical_lines]
+def shell_lines(text: str) -> Iterator[list[tuple[list[str], str]]]:
+    """Read simple shell commands and their following operators without executing the answer."""
+    for line in text.replace('\\\n', '').splitlines():
+        line = re.sub(r'^(?:[-*+] |\d+[.)] )', '', line.strip()).strip('`').removeprefix('$ ')
+        segments = []
+        start = 0
+        for token in SHELL_SYNTAX.finditer(line):
+            if token.lastgroup == 'comment':
+                line = line[:token.start()]
+                break
+            if token.lastgroup == 'operator':
+                segments.append((line[start:token.start()], token.group()))
+                start = token.end()
+        segments.append((line[start:], ''))
+        try:
+            yield [(shlex.split(command), operator) for command, operator in segments]
+        except ValueError:
+            continue
 
 
 def final_command_args(answer: str, prefix: str) -> list[str]:
-    expected = shlex.split(prefix)
     commands = []
-    for line in answer_lines(answer):
-        try:
-            lexer = shlex.shlex(line, posix=True, punctuation_chars=';&|')
-            lexer.whitespace_split = True
-            args = list(lexer)
-        except ValueError:
+    for segments in shell_lines(answer):
+        match segments:
+            case [(['cd', _], '&&'), *rest]:
+                segments = rest
+        args, operator = segments[0]
+        for end in range(1, len(args) + 1):
+            if re.fullmatch(prefix, shlex.join(args[:end])):
+                break
+        else:
             continue
-        if args[:len(expected)] == expected:
-            options = args[len(expected):]
-            keys = [arg.split('=', 1)[0] for arg in options if '=' in arg]
-            if len(set(keys)) != len(keys) or any(arg and not arg.strip(';&|') for arg in options):
-                return []
-            commands.append(options)
+        options = args[end:]
+        keys = [arg.split('=', 1)[0] for arg in options if '=' in arg]
+        if len(set(keys)) != len(keys) or operator:
+            return []
+        commands.append(options)
     return commands[0] if len(commands) == 1 else []
 
 
-def file_evidence(case: dict, workdir: Path) -> tuple[list[str], list[str]]:
+def file_evidence(case: dict, workdir: Path) -> tuple[list[str], list[str], list[str]]:
     contents = {}
-    missing = []
-    root = workdir.resolve()
-    for pattern in case['files']:
-        found = False
-        for path in sorted(workdir.glob(pattern)):
-            if not path.is_file() or not path.resolve().is_relative_to(root):
+    ignored = {'.git', '.venv', '__pycache__', '.pytest_cache', '.ruff_cache', '.mypy_cache'}
+    for directory, subdirs, names in os.walk(workdir):
+        subdirs[:] = [name for name in subdirs if name not in ignored]
+        for name in names:
+            path = Path(directory) / name
+            if path.is_symlink() or not path.is_file():
                 continue
             relative = path.relative_to(workdir)
             data = path.read_bytes()
             original = FIXTURE_DIR / relative
             if case.get('cwd') != 'empty' and original.is_file() and original.read_bytes() == data:
                 continue
-            contents[relative] = f'{relative}\n{data.decode(errors="replace")}'
-            found = True
-        if not found:
+            if b'\0' in data:
+                continue
+            try:
+                content = data.decode()
+            except UnicodeDecodeError:
+                continue
+            contents[path] = f'{relative}\n{content}'
+
+    selected = set()
+    missing = []
+    for pattern in case['files']:
+        matches = contents.keys() & workdir.glob(pattern)
+        if matches:
+            selected.update(matches)
+        else:
             missing.append(pattern)
-    return list(contents.values()), missing
+    return [contents[path] for path in sorted(selected)], [contents[path] for path in sorted(contents)], missing
 
 
 def fixture_source(function: ast.FunctionDef | ast.AsyncFunctionDef, definitions: dict) -> str:
@@ -309,12 +385,17 @@ def fixture_source(function: ast.FunctionDef | ast.AsyncFunctionDef, definitions
     return '\n'.join(reachable.values())
 
 
-def fixture_evidence(files: list[str]) -> dict[str, list[str]]:
+def check_fixture_scopes(files: list[str], patterns: dict[str, str]) -> dict[str, bool]:
     scoped: dict[str, list[str]] = {}
+    checks = {}
     for file in files:
+        path, _, source = file.partition('\n')
+        if not path.endswith('.py'):
+            continue
         try:
-            module = ast.parse(file.partition('\n')[2])
-        except SyntaxError:
+            module = ast.parse(source, filename=path)
+        except SyntaxError as exc:
+            checks[f'{path}:{exc.lineno}: {exc.msg}'] = False
             continue
         functions = {f.name: f for f in module.body if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))}
         for function in functions.values():
@@ -326,7 +407,11 @@ def fixture_evidence(files: list[str]) -> dict[str, list[str]]:
                 scope = next((kw.value for kw in keywords if kw.arg == 'scope'), ast.Constant('function'))
                 if isinstance(scope, ast.Constant) and isinstance(scope.value, str):
                     scoped.setdefault(scope.value, []).append(fixture_source(function, functions))
-    return scoped
+    for scope, pattern in patterns.items():
+        checks[f'{scope}-scoped fixture: {pattern}'] = any(
+            re.search(pattern, source) for source in scoped.get(scope, [])
+        )
+    return checks
 
 
 def grade(case: dict, arm: str, transcript: Transcript, workdir: Path) -> tuple[dict[str, Any], list[str]]:
@@ -334,8 +419,7 @@ def grade(case: dict, arm: str, transcript: Transcript, workdir: Path) -> tuple[
     missing_files = []
     match = re.search
     if 'files' in case:
-        written, missing_files = file_evidence(case, workdir)
-        forbidden = written
+        written, forbidden, missing_files = file_evidence(case, workdir)
     elif 'final_command' in case:
         written = forbidden = final_command_args(transcript.answer, case['final_command'])
         match = re.fullmatch
@@ -354,18 +438,20 @@ def grade(case: dict, arm: str, transcript: Transcript, workdir: Path) -> tuple[
         'missing_files': missing_files,
     }
     if case.get('fixture_scopes'):
-        fixtures = fixture_evidence(written)
-        for scope, pattern in case['fixture_scopes'].items():
-            result['must'][f'{scope}-scoped fixture: {pattern}'] = any(
-                re.search(pattern, source) for source in fixtures.get(scope, [])
-            )
+        result['must'].update(check_fixture_scopes(written, case['fixture_scopes']))
+    evidence = forbidden if 'files' in case else written
     if case.get('must_commands'):
-        commands = transcript.commands + answer_lines(transcript.answer)
+        commands = [
+            shlex.join(words)
+            for text in [*transcript.commands, transcript.answer]
+            for segments in shell_lines(text)
+            for words, _ in segments if words
+        ]
         result['must'].update({p: any(re.match(p, cmd) for cmd in commands) for p in case['must_commands']})
-        written = written + commands
+        evidence = evidence + commands
     graded = list(result['must'].values()) + list(result['must_not'].values()) + [False] * len(missing_files)
     result['score'] = round(sum(graded) / len(graded), 2) if graded else None
-    return result, written
+    return result, evidence
 
 
 def write_artefacts(

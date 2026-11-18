@@ -28,3 +28,11 @@ class TestPluginManifests(TestCase):
     def test_broken_marketplace_link(self) -> None:
         (self.root / 'plugins/python-powers').unlink()
         self.assertTrue(any('.agents/plugins/marketplace.json' in error for error in check_manifests(self.root)))
+
+    def test_missing_skills_directory_setting(self) -> None:
+        name = '.codex-plugin/plugin.json'
+        path = self.root / name
+        manifest = json.loads(path.read_text())
+        del manifest['skills']
+        path.write_text(json.dumps(manifest))
+        self.assertEqual(check_manifests(self.root), [f'{name}: set "skills" to the plugin’s skills directory'])

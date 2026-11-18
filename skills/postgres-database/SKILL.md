@@ -232,6 +232,8 @@ def _apply_filters(self, query: Select, filters: AuthorListFilters) -> Select:
     return query
 ```
 
+Both timestamp bounds include the supplied instant. Require timezone-aware values in the filter schema so the comparison is independent of the database session’s time zone.
+
 ### Migrations
 
 Always generate with Alembic autogenerate:

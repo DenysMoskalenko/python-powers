@@ -348,7 +348,7 @@
       ".pre-commit-config.yaml"
     ],
     "must_commands": [
-      "uv add ['\"]?python-json-logger"
+      "uv add(?!.* --(?:dev|group|optional)\\b)(?: --project(?:=| )(?:'[^']*'|\\S+))? '?python-json-logger(?![\\w.-])"
     ]
   },
   {
@@ -555,7 +555,7 @@
       "use_pre_commit(?:=.*)?",
       "project_type=fastapi_db_agent"
     ],
-    "final_command": "uv tool run cookiecutter https://github.com/DenysMoskalenko/BoilerplateBuilder"
+    "final_command": "(?:uv tool run|uvx) cookiecutter (?i:(?:https://github\\.com/|gh:)DenysMoskalenko/BoilerplateBuilder(?:\\.git)?/?)"
   },
   {
     "name": "beh-testcontainers-import",
@@ -574,12 +574,12 @@
     "forbid": [],
     "prompt": "Write tests/conftest.py for this FastAPI + Postgres service: start one PostgreSQL container per test session with testcontainers, and give each test an AsyncSession that is rolled back afterwards. Write the file.",
     "must": [
-      "(?m)^from testcontainers\\.community\\.postgres import PostgresContainer",
+      "(?m)^[\\t ]*from testcontainers\\.community\\.postgres import PostgresContainer",
       "\\bAsyncSession\\b|\\basync_sessionmaker\\s*\\(",
       "\\byield\\s+\\w+"
     ],
     "must_not": [
-      "(?m)^from testcontainers\\.postgres import"
+      "(?m)^[\\t ]*from testcontainers\\.postgres import"
     ],
     "files": [
       "tests/conftest.py"

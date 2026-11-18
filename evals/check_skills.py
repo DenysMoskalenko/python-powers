@@ -160,8 +160,11 @@ def check_manifests(root: Path = ROOT) -> list[str]:
             else:
                 if data['name'] != 'python-powers':
                     problems.append(f'{name}: plugin name must match the python-powers marketplace entry')
-                if not (root / data['skills']).is_dir():
-                    problems.append(f'{name}: skills path {data["skills"]!r} does not exist')
+                skills_path = data.get('skills')
+                if not isinstance(skills_path, str) or not skills_path.strip():
+                    problems.append(f'{name}: set "skills" to the plugin’s skills directory')
+                elif not (root / skills_path).is_dir():
+                    problems.append(f'{name}: skills path {skills_path!r} does not exist')
             version = data['version']
             if isinstance(version, str) and version:
                 versions[name] = version

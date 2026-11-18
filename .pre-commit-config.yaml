@@ -21,3 +21,9 @@ repos:
         files: ^(skills/|evals/check_skills\.py|\.claude-plugin/|\.codex-plugin/|\.cursor-plugin/|\.agents/plugins/|plugins/python-powers$)
         types: []
         pass_filenames: false
+      - id: test-eval-grader
+        name: test eval grader
+        entry: uv run --python '>=3.14' python -m unittest discover -s evals -p test_run_evals.py
+        language: system
+        files: ^(evals/(cases\.json|run_evals\.py|test_run_evals\.py|fixture/)|skills/postgres-database/references/testing\.md$)
+        pass_filenames: false

@@ -59,30 +59,19 @@ Routes are thin. They inject the service via `Depends()`, call one service metho
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from starlette.responses import Response
 
 router = APIRouter(tags=['Authors'])
-
-
-@router.post('/authors', status_code=201)
-async def add_author(creation: AuthorCreate, service: Annotated[AuthorService, Depends()]) -> Author:
-    return await service.create_author(creation)
 
 
 @router.get('/authors/{author_id}')
 async def get_author(author_id: int, service: Annotated[AuthorService, Depends()]) -> Author:
     return await service.get_author_by_id(author_id)
-
-
-@router.delete('/authors/{author_id}', response_class=Response, status_code=204)
-async def delete_author(author_id: int, service: Annotated[AuthorService, Depends()]) -> None:
-    await service.delete_author_by_id(author_id)
 ```
 
 Key patterns:
 - `Annotated[Service, Depends()]` — FastAPI auto-instantiates the service with its own dependencies
 - Return type annotations match the response schema
-- POST returns 201, DELETE returns 204 with `response_class=Response`
+- For creation, set `status_code=201`. For deletion, return `None` and set `status_code=204, response_class=Response` using `starlette.responses.Response`.
 
 ## Services
 
@@ -128,7 +117,7 @@ Schemas live in the module's `schemas.py`. Follow this inheritance pattern:
 from datetime import date, datetime, UTC
 from typing import Literal
 
-from pydantic import BaseModel, computed_field, ConfigDict, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, computed_field, ConfigDict, Field, field_validator
 
 
 class _AuthorBase(BaseModel):
@@ -166,8 +155,8 @@ class Author(_AuthorBase):
 class AuthorListFilters(BaseModel):
     ids: list[int] | None = Field(default=None, description='Filter by author ids')
     name: str | None = Field(default=None, min_length=1, max_length=129, description='Filter by full name')
-    created_from: datetime | None = Field(default=None, description='Filter by created at lower bound')
-    created_to: datetime | None = Field(default=None, description='Filter by created at upper bound')
+    created_from: AwareDatetime | None = Field(default=None, description='Inclusive start time with UTC offset')
+    created_to: AwareDatetime | None = Field(default=None, description='Inclusive end time with UTC offset')
 
 
 class AuthorListSorting(BaseListSorting):

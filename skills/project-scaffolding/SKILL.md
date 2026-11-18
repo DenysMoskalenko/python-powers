@@ -75,6 +75,7 @@ uv tool run cookiecutter https://github.com/DenysMoskalenko/BoilerplateBuilder \
 - Boolean inputs take the strings `yes` / `no`.
 - `Create New` generates a subdirectory named after the project. Use `Extract Here` only for a completely empty destination.
 - For a destination containing only a fresh `.git`, generate with `--output-dir` pointing to a temporary directory outside any Git worktree, `Create New`, and `initialize_git=no`. The builder attempts to install hooks even when Git initialization is disabled. Confirm the destination still contains only `.git`, then copy the generated project contents including dotfiles and `uv.lock`, excluding `.git` and `.venv`. Run `uv sync` in the destination to recreate the environment at its final path.
+- In that destination, check `git config --get core.hooksPath` and `git rev-parse --git-path hooks/pre-commit`. If a hooks path is configured or the pre-commit path already exists (including a dangling symlink), preserve it and explain why installation was skipped. Otherwise run `uv run prek install`.
 
 ## After scaffolding
 
