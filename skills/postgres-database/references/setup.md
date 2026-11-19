@@ -11,6 +11,7 @@ Examples use `app/` as the top-level package — substitute your package name if
 - `lru_cache`d async engine and session factory
 - `get_session` (FastAPI dependency) and `open_db_session` (context manager) providers
 - Dependency lifetime for CRUD and streaming responses
+- `BaseFilter`: the `fastapi-filter` base with a sortable-field allow-list
 
 ## Connection settings
 
@@ -136,3 +137,42 @@ Keep the default `use_cache=True`: nested services using the same `get_session` 
 For a streaming response that reads from the session after the endpoint returns, use `Depends(get_session, scope='request')` so the session stays open through response delivery. Streams that do not use the session while streaming can keep `function` scope. Complete any writes in a transaction that commits before streaming starts; a commit failure after the response has started cannot change its status.
 
 See [FastAPI dependency scopes](https://fastapi.tiangolo.com/tutorial/dependencies/dependencies-with-yield/#early-exit-and-scope) for teardown timing and restrictions on yielding sub-dependencies.
+
+## List filter base
+
+`app/infrastructure/db/filters.py`. The library's `order_by` accepts any attribute of the model — a column the API never returns, or a relationship that fails with a 500 — so the base rejects every field a filter does not list in `allowed_order_by_fields`. The library also passes `search` to `ILIKE` unescaped, so the base escapes it to match literally:
+
+```python
+import re
+
+from fastapi_filter.contrib.sqlalchemy import Filter
+from pydantic import field_validator
+
+
+class BaseFilter(Filter):
+    class Constants(Filter.Constants):
+        allowed_order_by_fields: tuple[str, ...] = ()
+
+    @field_validator('order_by', mode='after', check_fields=False)
+    @classmethod
+    def _restrict_sortable_fields(cls, value: list[str] | None) -> list[str] | None:
+        if not value:
+            return value
+
+        allowed = set(getattr(cls.Constants, 'allowed_order_by_fields', ()))
+        requested = {name.lstrip('+-') for name in value}
+        if forbidden := requested - allowed:
+            raise ValueError(f'Sorting by {sorted(forbidden)} is not allowed; sortable fields: {sorted(allowed)}')
+        return value
+
+    @field_validator('search', mode='after', check_fields=False)
+    @classmethod
+    def _escape_search_wildcards(cls, value: str | None) -> str | None:
+        if value is None or not hasattr(cls.Constants, 'search_model_fields'):
+            return value
+        return re.sub(r'([\\%_])', r'\\\1', value)  # backslash is PostgreSQL's default LIKE escape
+```
+
+- Install as `fastapi-filter[sqlalchemy]`; the extra keeps SQLAlchemy below 2.1, the range the library supports
+- If ty reports the nested `Constants` class as an invalid attribute override, upgrade ty (fixed in 0.0.103) instead of adding an ignore
+- `order_by: list[str] | None = Field(default=['-created_at'])`, not a bare list default: ruff cannot see that the class is a Pydantic model and reports `RUF012`. `search_model_fields` is a plain class attribute the library types as `list[str]`, so it keeps a `# noqa: RUF012`

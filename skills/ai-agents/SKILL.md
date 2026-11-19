@@ -60,7 +60,6 @@ from fastapi_pagination import Params
 from pydantic_ai import Agent, ModelSettings, RunContext
 from pydantic_ai.models import Model
 
-from app.domains.catalog.schemas import CatalogListSorting
 from app.domains.catalog_assistant.prompts import CATALOG_ASSISTANT_SYSTEM_PROMPT
 from app.domains.catalog_assistant.schemas import (
     CatalogAssistantDeps,
@@ -92,9 +91,7 @@ def build_catalog_assistant_agent(model: Model) -> Agent[CatalogAssistantDeps, C
     ) -> list[CatalogToolItem]:
         """List up to `limit` catalog items matching the filters. Use for examples, names, or lists."""
         items_page = await ctx.deps.catalog_service.list_items(
-            payload.filters,
-            CatalogListSorting(sort_by='name', sort_order='asc'),
-            pagination_params=Params(page=1, size=payload.limit),
+            payload.filters, pagination_params=Params(page=1, size=payload.limit)
         )
         return [CatalogToolItem.model_validate(item, from_attributes=True) for item in items_page.items]
 
@@ -117,15 +114,15 @@ Tool parameters are Pydantic models. The LLM sees them as function parameter sch
 ```python
 from pydantic import BaseModel, Field
 
-from app.domains.catalog.schemas import CatalogListFilters
+from app.domains.catalog.filters import CatalogFilter
 
 
 class CountCatalogItemsToolInput(BaseModel):
-    filters: CatalogListFilters = Field(default_factory=CatalogListFilters)
+    filters: CatalogFilter = Field(default_factory=CatalogFilter)
 
 
 class ListCatalogItemsToolInput(BaseModel):
-    filters: CatalogListFilters = Field(default_factory=CatalogListFilters)
+    filters: CatalogFilter = Field(default_factory=CatalogFilter)
     limit: int = Field(default=20, ge=1, le=100)
 ```
 
@@ -140,6 +137,7 @@ You are a read-only assistant for a service catalog API.
 Rules:
 - Stay within the catalog domain. If the question is unrelated, refuse politely.
 - Answer concisely, from tool results only; if they return nothing relevant, say so.
+- Sort with `order_by`: name or created_at; prefix `-` for descending.
 """.strip()
 ```
 

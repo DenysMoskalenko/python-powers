@@ -24,7 +24,7 @@ Routes parse HTTP requests into typed schemas and delegate to services. Services
 
 ## Project Structure
 
-Package-by-feature: each module under `app/domains/` is one self-contained vertical slice — business CRUD, an AI agent, or operational. Cross-cutting technical code lives outside it — `app/core/` (config, exceptions, exception handlers, shared schemas, lifespan) and `app/infrastructure/` (db, llms). A business change touches one module folder; an infra change touches one infra folder.
+Package-by-feature: each module under `app/domains/` is one self-contained vertical slice — business CRUD, an AI agent, or operational. Cross-cutting technical code lives outside it — `app/core/` (config, exceptions, exception handlers, lifespan) and `app/infrastructure/` (db, llms). A business change touches one module folder; an infra change touches one infra folder.
 
 ```text
 app/
@@ -34,8 +34,9 @@ app/
     <module>/              # one vertical slice per module
       routes.py            # thin HTTP handlers
       schemas.py           # request/response + internal Pydantic models
+      filters.py           # fastapi-filter class, only for a database-backed list (see postgres-database)
       service.py           # business logic + queries
-  core/                    # config, exceptions, exception_handlers, schemas, lifespan
+  core/                    # config, exceptions, exception_handlers, lifespan
   infrastructure/
     db/                    # engine, session, models/ (see postgres-database)
     llms/                  # LLM providers + registry (see ai-agents)
@@ -45,7 +46,7 @@ SQLAlchemy models are the one deliberate exception to "everything in the module 
 
 ### Module growth
 
-Start flat: a module is three files (`routes.py`, `schemas.py`, `service.py`). Promote a concern to a subpackage **only once it splits into 2+ files** (e.g. `books/services/` holding `service_books.py` + `service_books_validator.py`). When a subpackage appears:
+Start flat: a module is three files (`routes.py`, `schemas.py`, `service.py`), plus `filters.py` for a database-backed list. Promote a concern to a subpackage **only once it splits into 2+ files** (e.g. `books/services/` holding `service_books.py` + `service_books_validator.py`). When a subpackage appears:
 
 - **Facade `__init__.py`** re-exports public symbols via `__all__`. External callers import from the package root (`from app.domains.books.services import BooksService`), never the deep path.
 - **Internal siblings import directly** (`from .service_books import BooksService`), never through their own facade — this avoids circular imports during package init.
@@ -115,9 +116,8 @@ Schemas live in the module's `schemas.py`. Follow this inheritance pattern:
 
 ```python
 from datetime import date, datetime, UTC
-from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, computed_field, ConfigDict, Field, field_validator
+from pydantic import BaseModel, computed_field, ConfigDict, Field, field_validator
 
 
 class _AuthorBase(BaseModel):
@@ -150,19 +150,6 @@ class Author(_AuthorBase):
     @property
     def name(self) -> str:
         return ' '.join(part for part in [self.first_name, self.last_name] if part)
-
-
-class AuthorListFilters(BaseModel):
-    ids: list[int] | None = Field(default=None, description='Filter by author ids')
-    name: str | None = Field(default=None, min_length=1, max_length=129, description='Filter by full name')
-    created_from: AwareDatetime | None = Field(default=None, description='Inclusive start time with UTC offset')
-    created_to: AwareDatetime | None = Field(default=None, description='Inclusive end time with UTC offset')
-
-
-class AuthorListSorting(BaseListSorting):
-    sort_by: Literal['first_name', 'last_name', 'created_at', 'updated_at'] = Field(
-        default='created_at', description='Sorting field'
-    )
 ```
 
 Pattern:
@@ -170,8 +157,7 @@ Pattern:
 - `EntityCreate` — input for creation, inherits base, adds validators
 - `EntityUpdate` — input for update (often same as Create)
 - `Entity` — response model with `id`, timestamps, `from_attributes=True`
-- `EntityListFilters` — query params for filtering
-- `EntityListSorting` — inherits `BaseListSorting`, constrains `sort_by` with `Literal`; make the base frozen (`ConfigDict(frozen=True)`) so ty lets subclasses narrow its `sort_by: str`
+- `EntityFilter` — filtering and sorting of a database-backed list are not schemas: a `fastapi-filter` class in the module's `filters.py`, taken by the route as `Annotated[EntityFilter, FilterDepends(EntityFilter)]`
 - Bound every string field with `min_length` and `max_length`; add `examples` to request fields and a `description` where the name does not explain the field
 
 ## Exceptions
@@ -219,7 +205,7 @@ These mean the service boundary is drifting. Stop and apply the named rule:
 | Split one feature's routes, schemas, and service across separate top-level layers | Project Structure — each module is one self-contained vertical slice |
 | Import a subpackage's internals from outside via its deep path, or route an internal sibling import through its own facade | Module growth — outside callers import the facade; internal siblings import directly |
 | Put request/response schemas outside their module | Schemas — colocate schemas in the module's `schemas.py` |
-| Use bare `str` for `sort_by` or other constrained query fields | Schemas — use `Literal[...]` for local constrained values |
+| Hand-write `sort_by` / `sort_order` params or a filters schema for a database-backed list | Schemas — take the module's `fastapi-filter` class through `FilterDepends` |
 | Return ORM models without a response schema | Schemas — response models use `ConfigDict(from_attributes=True)` |
 | Nest routers through an intermediate `APIRouter` | Setup — include every module router into the app directly |
 | Add an integration's fields to the root `Settings`, or declare a password, token, or API key as `str` | Setup — one settings class per integration with its own `env_prefix`, inheriting `_EnvSettings`; every secret is `SecretStr` |
@@ -227,4 +213,5 @@ These mean the service boundary is drifting. Stop and apply the named rule:
 ## Gotchas
 
 - `Annotated[Service, Depends()]` with empty `Depends()` triggers FastAPI auto-injection of the service's own dependencies
-- Filter/sorting schemas as `Depends()` parameters parse query strings into typed models automatically — except a `list[...]` field (`ids`), which `Depends()` reads from the request body; take such a filters schema as `Annotated[AuthorListFilters, Query()]`
+- A list route takes its filter through `FilterDepends` (`from fastapi_filter import FilterDepends`), not `Depends()` or `Query()`. `order_by` and `__in` / `__not_in` fields arrive comma-separated (`?id__in=1,2&order_by=-created_at,last_name`); a repeated key keeps only its last value. A filter field's `description` does not reach the OpenAPI schema; constraints such as `min_length` do
+- Any other query-parameter model with a `list[...]` field is `Annotated[Model, Query()]`, because `Depends()` reads a list from the request body

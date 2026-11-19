@@ -1,13 +1,13 @@
 ---
 name: postgres-database
-description: Use when writing SQLAlchemy 2.0 async models, service queries (CRUD, pagination, filtering), or generating or debugging Alembic migrations (`migrations/env.py`, autogenerate) against PostgreSQL — `Mapped[]` columns, `ondelete`, `uuidv7` keys, testcontainers-based database isolation in tests, or diagnosing `MissingGreenlet`, `lazy='raise'` / `InvalidRequestError`, or N+1 query problems.
+description: Use when writing SQLAlchemy 2.0 async models, service queries (CRUD, pagination, `fastapi-filter` filtering, sorting), or generating or debugging Alembic migrations (`migrations/env.py`, autogenerate) against PostgreSQL — `Mapped[]` columns, `ondelete`, `uuidv7` keys, testcontainers-based database isolation in tests, or diagnosing `MissingGreenlet`, `lazy='raise'` / `InvalidRequestError`, or N+1 query problems.
 ---
 
 # PostgreSQL Database Patterns
 
 SQLAlchemy 2.0 async patterns for PostgreSQL. Services own queries directly — no repository layer.
 
-> Requires Python 3.14+, SQLAlchemy 2.0+ (`sqlalchemy[asyncio]`), Alembic, PostgreSQL, testcontainers 4.15+, psycopg; FastAPI for session dependencies.
+> Requires Python 3.14+, SQLAlchemy 2.0+ (`sqlalchemy[asyncio]`), Alembic, PostgreSQL, testcontainers 4.15+, psycopg, fastapi-filter 3.0+; FastAPI for session dependencies.
 > Examples use `app/` as the top-level package. Substitute your package name if different.
 
 **Related**: `python-code-style`, `python-testing`, `python-tooling`, `fastapi-service`, `project-scaffolding`.
@@ -165,16 +165,13 @@ async def get_book_by_id(self, book_id: int) -> Book:
 from sqlalchemy.orm import selectinload
 
 
-async def list_books(
-    self, filters: BookListFilters, pagination_params: Params,
-) -> Page[Book]:
+async def list_books(self, book_filter: BookFilter, pagination_params: Params) -> Page[Book]:
     query = (
         select(BookModel)
-        .order_by(BookModel.id)
         .options(selectinload(BookModel.author))  # many-to-one on a list — selectinload (dedupes shared parents)
         .options(selectinload(BookModel.tags))    # M2M — selectinload
     )
-    query = self._apply_filters(query, filters)
+    query = book_filter.sort(book_filter.filter(query)).order_by(BookModel.id)
     return await apaginate(
         self._session, query, params=pagination_params,
         transformer=lambda books: self.BOOK_LIST_ADAPTER.validate_python(books, from_attributes=True),
@@ -193,46 +190,44 @@ from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlalchemy import apaginate
 
 
-async def list_authors(
-    self, filters: AuthorListFilters, sorting: AuthorListSorting, pagination_params: Params
-) -> Page[Author]:
-    query = select(AuthorModel)
-    query = self._apply_filters(query, filters)
-    query = sorting.sort_query(query, AuthorModel).order_by(AuthorModel.id)
+async def list_authors(self, author_filter: AuthorFilter, pagination_params: Params) -> Page[Author]:
+    query = author_filter.filter(select(AuthorModel))
+    query = author_filter.sort(query).order_by(AuthorModel.id)
     return await apaginate(
         self._session, query, params=pagination_params,
         transformer=lambda authors: self.AUTHOR_LIST_ADAPTER.validate_python(authors, from_attributes=True),
     )
 ```
 
-The transformer validates ORM objects into Pydantic models — without it you get raw model instances. `sort_query` on `BaseListSorting` (`app/core/schemas.py`) orders by the model column named in `sort_by`, so every `sort_by` literal must name a column.
+The transformer validates ORM objects into Pydantic models — without it you get raw model instances.
 
 Paginated queries need a unique ordering: default to the primary key, or append it as a tie-breaker after the requested sorting. This stabilizes ordering for unchanged data; concurrent writes can still shift offset-based pages.
 
 Result-level `.unique()` does not remove duplicate SQL rows before `LIMIT` / `OFFSET`. Make the query return one row per parent before paginating so page sizes and totals remain correct.
 
-### Filtering
+### List filters
 
-Case-insensitive contains pattern for text filters (`autoescape=True` keeps `%` and `_` in user input literal):
+A list endpoint declares one `fastapi-filter` class in the module's `filters.py`. `BaseFilter` (`app/infrastructure/db/filters.py`, code in `references/setup.md`) rejects sorting outside `allowed_order_by_fields` and escapes `search`:
 
 ```python
-from sqlalchemy import Select
+class AuthorFilter(BaseFilter):
+    id__in: list[int] | None = None
+    search: str | None = Field(default=None, min_length=1, max_length=64)
+    created_at__gte: AwareDatetime | None = None
+    created_at__lte: AwareDatetime | None = None
+    order_by: list[str] | None = Field(default=['-created_at'])
 
-
-def _apply_filters(self, query: Select, filters: AuthorListFilters) -> Select:
-    if filters.name:
-        full_name = func.concat(AuthorModel.first_name, ' ', AuthorModel.last_name)
-        query = query.filter(full_name.icontains(filters.name, autoescape=True))
-    if filters.ids is not None:
-        query = query.filter(AuthorModel.id.in_(filters.ids))
-    if filters.created_from is not None:
-        query = query.filter(AuthorModel.created_at >= filters.created_from)
-    if filters.created_to is not None:
-        query = query.filter(AuthorModel.created_at <= filters.created_to)
-    return query
+    class Constants(BaseFilter.Constants):
+        model = AuthorModel
+        search_model_fields = ['first_name', 'last_name']  # noqa: RUF012
+        allowed_order_by_fields = ('first_name', 'last_name', 'created_at', 'updated_at')
 ```
 
-Both timestamp bounds include the supplied instant. Require timezone-aware values in the filter schema so the comparison is independent of the database session’s time zone.
+- Fields are `<column>` or `<column>__<operator>` (`neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `isnull`)
+- `search` runs `ILIKE '%value%'` on each of `search_model_fields`. No `__like` / `__ilike` fields: a value without `%` raises a `DeprecationWarning`
+- A condition the operators cannot express (a full-name match) comes from its own route parameter, not a filter field, between `filter()` and `sort()`: `query.filter(full_name.icontains(name, autoescape=True))`
+
+Both timestamp bounds include the supplied instant. Require timezone-aware values in the filter so the comparison is independent of the database session’s time zone.
 
 ### Migrations
 
@@ -268,7 +263,8 @@ These mean the database boundary is drifting. Stop and apply the named rule:
 | Hand-write a migration without autogenerate | Migrations — run `make migration MSG="..."` first |
 | Add a repository layer between services and SQLAlchemy | Usage — services own queries directly |
 | Paginate with manual `limit` / `offset` math | Pagination — use `apaginate()` with a transformer |
-| Use `==` for requested case-insensitive text search | Filtering — use `icontains` / `ilike` |
+| Use `==` for requested case-insensitive text search | List filters — use `search` or `icontains` |
+| Hand-write `_apply_filters` or a `sort_by` / `sort_order` schema | List filters — declare a `BaseFilter` subclass |
 | Move request-scoped `commit()` / `rollback()` from the session provider into CRUD service methods | Setup — keep request transaction ownership in `open_db_session()`; see `references/setup.md` |
 | Wrap a single-statement CRUD write in `begin_nested()` / SAVEPOINT for "safety" or "test rollback" | Service Query Patterns — `begin_nested()` is for partial rollback inside a larger transaction; for test isolation use `join_transaction_mode='create_savepoint'` in the fixture |
 | Replace Postgres tests with SQLite or mocks | Testing — use testcontainers; see `references/testing.md` |

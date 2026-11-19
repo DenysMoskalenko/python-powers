@@ -11,6 +11,7 @@ dependencies = [
     "alembic",
     "psycopg[binary]",
     "fastapi-pagination",
+    "fastapi-filter[sqlalchemy]",
     "pydantic-ai-slim[openai,anthropic]",
     "requests",
 ]
