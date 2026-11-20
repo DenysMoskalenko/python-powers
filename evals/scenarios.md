@@ -401,12 +401,12 @@ Each skill section starts with a `### Triggering` block that tests discovery —
 **Must produce**:
 - `_BookBase` with the shared fields (`min_length`, `max_length`, `examples`), `BookCreate(_BookBase)`, an all-optional `BookPatch(BaseModel)`, and `Book(_BookBase)` with `ConfigDict(from_attributes=True)`
 - In `BookPatch`, a field on a NOT NULL column keeping the column's type with `default=None` — `title: str = Field(  # ty: ignore[invalid-assignment]` with `default=None, ...` on the next line — and a field on a nullable column as `T | None`
-- `BookListFilters` and `BookListSorting(BaseListSorting)` from `app/core/schemas.py`, with a `Literal` `sort_by`
+- No filter or sorting schema: list filtering and sorting are a `BookFilter` (`fastapi-filter`) in the module's `filters.py`
 
 **Must not produce**:
 - `BookPatch(BookCreate)` or `BookUpdate(BookCreate)` reused for PATCH
 - `title: str | None` on the patch field of a NOT NULL column, which lets `{"title": null}` reach `UPDATE … SET title = NULL`
-- A bare `str` for `sort_by`
+- A hand-written `BookListFilters` / `BookListSorting` schema, or `sort_by` / `sort_order` fields
 
 ### Eval 4 — PATCH semantics
 
@@ -422,17 +422,15 @@ Each skill section starts with a `### Triggering` block that tests discovery —
 
 ### Eval 5 — Query-parameter models
 
-**Prompt**: "The books list endpoint takes filters (including `ids: list[int]`), a sorting model, and pagination. Write the route."
+**Prompt**: "The books list endpoint takes filters (including a list of ids), sorting, and pagination. Write the route."
 
 **Must produce**:
-- `filters: Annotated[BookListFilters, Query()]` as the route's only query parameter — the one model carrying the `list[...]` field
-- `sorting: Annotated[BookListSorting, Depends()]` and `pagination_params: Annotated[Params, Depends()]`, the sub-dependencies that leave runtime parsing intact
-- On a route whose filters model has no `list[...]` field, `Annotated[<Entity>ListFilters, Depends()]` instead, so `/docs` renders each filter as its own parameter
+- `book_filter: Annotated[BookFilter, FilterDepends(BookFilter)]` — one `fastapi-filter` class carrying the filters (`id__in: list[int] | None`) and `order_by`
+- `pagination_params: Annotated[Params, Depends()]`
 
 **Must not produce**:
-- Any second query parameter beside the `Query()` model — another `Query()` model or a bare scalar such as `limit: int = 10` — which stops the expansion so every request answers 422
-- `Depends()` on the model holding the `list[...]` field, which moves it into the body and leaves the query values `None`
-- Two list-carrying models on one route instead of one merged filters model
+- `Depends()` or `Query()` on the filter class, which skips the comma-separated parsing of `id__in` and `order_by`
+- A separate sorting model, or `sort_by` / `sort_order` parameters
 
 ### Eval 6 — Service internals
 
@@ -531,15 +529,15 @@ Each skill section starts with a `### Triggering` block that tests discovery —
 **Prompt**: "Add a paginated `list_books` returning each book with its author, filtered by optional ids, a case-insensitive title substring, and inclusive `created_from` and `created_to` timestamps."
 
 **Must produce**:
-- `select(BookModel).options(selectinload(BookModel.author))` with the clauses in `_apply_filters(self, query: Select, filters: BookListFilters) -> Select`
+- `select(BookModel).options(selectinload(BookModel.author))` passed through `book_filter.filter(query)`, where `BookFilter(BaseFilter)` declares `id__in`, `search` over `title`, `created_at__gte` and `created_at__lte`
 - Omitted IDs leave the query unrestricted by ID. An empty list selects no rows.
-- `BookModel.title.icontains(filters.title, autoescape=True)` and inclusive lower and upper bounds on the `DateTime(timezone=True)` column
+- Inclusive lower and upper bounds on the `DateTime(timezone=True)` column
 - Both bounds accept timestamps with UTC offsets and reject date-only or timezone-naive inputs.
 - `apaginate(self._session, query, params=pagination_params, transformer=...)` with a class-level `TypeAdapter[list[BookWithAuthor]]` built once per process
 
 **Must not produce**:
 - `joinedload(BookModel.author)` inside a list query, or hand-rolled `limit` / `offset` arithmetic
-- `ilike(f'%{value}%')` assembled by hand, or a normalizer that strips or attaches `tzinfo` before comparing
+- `ilike(f'%{value}%')` assembled by hand, a hand-written `_apply_filters`, or a normalizer that strips or attaches `tzinfo` before comparing
 
 ### Eval 6 — Diagnose `lazy='raise'`
 

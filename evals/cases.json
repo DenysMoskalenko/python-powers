@@ -397,14 +397,15 @@
       "fastapi-service"
     ],
     "forbid": [],
-    "prompt": "Add GET /v1/books to this FastAPI service. Filters are ids (a list of ints), title and author_id; the route also takes a BookListSorting model and fastapi_pagination Params. Write the route and the filter and sorting schemas.",
+    "prompt": "Add GET /v1/books to this FastAPI + SQLAlchemy service. The list filters by ids (a list of ints), a title search and author_id, sorts by title or created_at, and paginates with fastapi_pagination Params. Write the route and the filter.",
     "must": [
-      "Annotated\\[\\w*Filter\\w*, Query\\(",
+      "FilterDepends\\(",
       "Annotated\\[Params, Depends\\(\\)\\]",
-      "ids: list\\[int\\] \\| None"
+      "id__in: list\\[int\\] \\| None"
     ],
     "must_not": [
-      "Annotated\\[\\w*Filter\\w*, Depends\\("
+      "sort_by",
+      "Annotated\\[\\w*Filter\\w*, Query\\("
     ],
     "files": [
       "app/**/*.py"
@@ -590,29 +591,32 @@
     }
   },
   {
-    "name": "beh-sorting-frozen",
-    "note": "ty 0.0.92 invalid-mutable-override: a subclass may narrow sort_by to a Literal only when the base is frozen.",
+    "name": "beh-list-filter",
+    "note": "fastapi-filter sorts by any model attribute; BaseFilter restricts order_by to allowed_order_by_fields.",
     "tags": [
       "behavior",
-      "fastapi-service"
+      "postgres-database"
     ],
     "arms": [
       "with",
       "without"
     ],
     "expect": [
-      "fastapi-service"
+      "postgres-database"
     ],
     "forbid": [],
-    "prompt": "Add a reusable BaseListSorting schema (sort_by and sort_order) to app/core/schemas.py, and a BookListSorting for a books module that only allows sorting by title, published_at or created_at. Write the files.",
+    "prompt": "Add list_books to BookService in this FastAPI + SQLAlchemy service: filter by ids, search in title, a created_at range, sorting only by title or created_at, and fastapi_pagination. Write the filter and the service method.",
     "must": [
-      "frozen=True",
-      "Literal\\[\\s*['\"]title['\"]"
+      "allowed_order_by_fields",
+      "\\.sort\\(",
+      "search_model_fields"
     ],
-    "must_not": [],
+    "must_not": [
+      "_apply_filters",
+      "sort_by"
+    ],
     "files": [
-      "app/core/schemas.py",
-      "app/domains/**/*.py"
+      "app/**/*.py"
     ]
   },
   {
