@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Reusable Python, FastAPI, PostgreSQL, testing, tooling, project scaffolding, and AI-agent engineering skills",
-    "version": "0.13.0"
+    "version": "0.14.0"
   },
   "plugins": [
     {

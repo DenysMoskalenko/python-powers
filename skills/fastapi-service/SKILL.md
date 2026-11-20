@@ -191,7 +191,7 @@ Register handlers in `create_app()`; their order relative to routers and middlew
 
 ## Setup
 
-See `references/setup.md` for one-time project wiring: `pydantic-settings` configuration (`Settings` + `lru_cache`d `get_settings`), `setup_routers()` (business modules under `/v1`, operational endpoints unversioned), and the `create_app()` factory.
+See `references/setup.md` for one-time project wiring: `pydantic-settings` configuration (`Settings` + `lru_cache`d `get_settings`), `setup_routers()` (business modules under `/v1`, operational endpoints unversioned), the `create_app()` factory and its `lifespan`, and the health checks.
 
 ## Red Flags — STOP
 
@@ -209,6 +209,8 @@ These mean the service boundary is drifting. Stop and apply the named rule:
 | Return ORM models without a response schema | Schemas — response models use `ConfigDict(from_attributes=True)` |
 | Nest routers through an intermediate `APIRouter` | Setup — include every module router into the app directly |
 | Add an integration's fields to the root `Settings`, or declare a password, token, or API key as `str` | Setup — one settings class per integration with its own `env_prefix`, inheriting `_EnvSettings`; every secret is `SecretStr` |
+| Check a provider or auth server that only some routes call (OpenAI, Bedrock, Keycloak) in `/health/ready` | Setup — readiness checks only what every request needs; that outage would take every pod out of traffic, routes that never call it included |
+| Add an `lru_cache`d client without building it in the lifespan's `startup()` and closing it in `shutdown()`, or call it there positionally | Setup — the lifespan builds and closes every cached client, called by keyword as FastAPI calls it |
 
 ## Gotchas
 

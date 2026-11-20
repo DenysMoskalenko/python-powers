@@ -1,6 +1,6 @@
 # FastAPI Service Setup
 
-Reference for one-time project wiring — written once at bootstrap, rarely touched afterward. Load this when setting up a service's configuration, router wiring, or app factory.
+Reference for one-time project wiring — written once at bootstrap, rarely touched afterward. Load this when setting up a service's configuration, router wiring, app factory, lifespan, or health checks.
 
 Examples use `app/` as the top-level package — substitute your package name if different.
 
@@ -8,7 +8,8 @@ Examples use `app/` as the top-level package — substitute your package name if
 
 - `pydantic-settings` configuration (`Settings` + `lru_cache`d `get_settings`)
 - `setup_routers()` — includes the module routers into the app
-- `create_app()` — the app factory
+- `create_app()` — the app factory, and its `lifespan`
+- Health checks — liveness and the database readiness probe
 
 ## Configuration
 
@@ -54,7 +55,6 @@ def get_settings() -> Settings:
 - Put the unit in the name and the bound on the field: `timeout_seconds: float = Field(default=10.0, gt=0)`
 - `SecretStr` for every credential — `repr` and dumps show `**********`; call `.get_secret_value()` only where the value is consumed, never log or expose it
 - Every class inherits `_EnvSettings`: `SecretStr` masks only after validation, and each class also receives the other classes' `.env` keys as input, so without `hide_input_in_errors=True` any `ValidationError` can print a raw secret into logs and AI session transcripts
-- Bound each `/health/ready` dependency check with `asyncio.timeout()` so a dead dependency answers 503
 - Use `dist.env` as the template, never commit `.env`
 
 ## Router
@@ -88,3 +88,105 @@ def create_app() -> FastAPI:
     include_exception_handlers(_app)
     return _app
 ```
+
+`lifespan` builds every `lru_cache`d client at startup and closes them all at shutdown, from a `finally`, so a startup that fails halfway still closes what it built:
+
+```python
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager, AsyncExitStack
+
+from fastapi import FastAPI
+
+from app.core.config import get_settings, Settings
+from app.infrastructure.db.database import async_session_factory, close_database
+from app.infrastructure.llms.provider_openai import close_openai_client, get_openai_client
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
+    settings = get_settings()
+    try:
+        await startup(settings)
+        yield
+    finally:
+        await shutdown()
+
+
+async def startup(settings: Settings) -> None:
+    # FastAPI resolves sync dependencies in threads, where concurrent first requests would each build a client.
+    async_session_factory()
+    get_openai_client(settings=settings)
+
+
+async def shutdown() -> None:
+    async with AsyncExitStack() as clients:  # every client closes even when an earlier one fails to
+        clients.push_async_callback(close_openai_client)
+        clients.push_async_callback(close_database)
+```
+
+Call a cached dependency by keyword outside FastAPI too: FastAPI calls dependencies with keyword arguments, which `lru_cache` keys apart from positional ones, so `get_openai_client(settings)` would build a second client. Each `close_*` function gets its client the same way (`get_openai_client(settings=get_settings())`), closes it (`await client.close()`, `await engine.dispose()`), and clears the getter's `lru_cache` in a `finally`, so the next startup builds a fresh client instead of reusing a closed one; `close_database` is in `postgres-database`.
+
+## Health checks
+
+`app/domains/health_checks/` serves two unversioned routes. `/health/live` answers a static `UP`. `/health/ready` checks only what every request needs: the database. Never check a provider or auth server that only some routes call (OpenAI, Bedrock, Keycloak): its outage would take all pods out of traffic at once, the routes that never call it included. A service without a database answers a static `READY`.
+
+The readiness route takes `session_factory: Annotated[async_sessionmaker[AsyncSession], Depends(async_session_factory)]`, documents its 503 with `responses={status.HTTP_503_SERVICE_UNAVAILABLE: {'model': HealthCheckReadyResponse}}`, and sets `response.status_code` to 503 when the probe returns `DOWN`.
+
+The probe in the module's `service.py` opens its own session from that factory, not the request's `get_session`: a probe cut off at its deadline keeps running after the request ends. It counts only `SQLAlchemyError` and `OSError` as `DOWN`; any other exception is a bug in the probe and should answer 500.
+
+```python
+import asyncio
+import logging
+
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+
+from app.domains.health_checks.schemas import LivenessStatus
+
+_logger = logging.getLogger(__name__)
+# asyncio holds tasks weakly: a probe cut off at its deadline stays here until its cancellation has finished.
+_abandoned_probes: set[asyncio.Task[None]] = set()
+
+
+async def check_database_status(
+    session_factory: async_sessionmaker[AsyncSession], timeout_seconds: float
+) -> LivenessStatus:
+    # Not awaited or shielded: psycopg's cancel overruns the deadline, and shield logs late failures as tracebacks.
+    probe = asyncio.create_task(_select_one(session_factory))
+    try:
+        await asyncio.wait([probe], timeout=timeout_seconds)
+    except asyncio.CancelledError:
+        _abandon(probe)
+        raise
+    # One line without a traceback, newlines escaped by %r: the kubelet probes every few seconds.
+    if not probe.done():
+        _abandon(probe)
+        _logger.warning('Readiness check: the database did not answer within %ss', timeout_seconds)
+        return 'DOWN'
+    try:
+        probe.result()
+    except (SQLAlchemyError, OSError) as exc:
+        _logger.warning('Readiness check: the database is down: %s: %r', type(exc).__name__, str(exc))
+        return 'DOWN'
+    return 'UP'
+
+
+def _abandon(probe: asyncio.Task[None]) -> None:
+    probe.cancel()
+    _abandoned_probes.add(probe)
+    probe.add_done_callback(_forget)
+
+
+def _forget(probe: asyncio.Task[None]) -> None:
+    _abandoned_probes.discard(probe)
+    if not probe.cancelled():
+        probe.exception()  # a query failing as it cancels must not log a traceback after its one-line DOWN
+
+
+async def _select_one(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    async with session_factory() as session:
+        await session.execute(text('SELECT 1'))
+```
+
+With OpenTelemetry, run the query inside `suppress_instrumentation()` (`opentelemetry.instrumentation.utils`) so probes record no spans.
