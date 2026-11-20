@@ -1,6 +1,6 @@
 # PostgreSQL Setup
 
-Reference for the SQLAlchemy 2.0 async base, engine, and session plumbing. Load this when wiring up a project's `Base`, async engine, or session providers.
+Reference for the SQLAlchemy 2.0 async base, engine, and session plumbing. Load this when wiring up a project's `Base`, async engine, session providers, or `migrations/env.py`.
 
 Examples use `app/` as the top-level package — substitute your package name if different.
 
@@ -8,10 +8,11 @@ Examples use `app/` as the top-level package — substitute your package name if
 
 - `DatabaseSettings`: connection parts, timeouts, and the composed URL
 - `Base` / `DeclarativeBase` with Alembic naming convention
-- `lru_cache`d async engine and session factory
+- `lru_cache`d async engine and session factory, and `close_database`
 - `get_session` (FastAPI dependency) and `open_db_session` (context manager) providers
 - Dependency lifetime for CRUD and streaming responses
 - `BaseFilter`: the `fastapi-filter` base with a sortable-field allow-list
+- Migration environment options
 
 ## Connection settings
 
@@ -122,11 +123,21 @@ async def open_db_session() -> AsyncGenerator[AsyncSession]:
         await session.commit()
     finally:
         await session.close()
+
+
+async def close_database() -> None:
+    try:
+        await async_engine().dispose()
+    finally:
+        async_session_factory.cache_clear()
+        async_engine.cache_clear()
 ```
 
 - `get_session` — async generator for FastAPI `Depends()`, shared within a request for the same dependency scope
 - `open_db_session` — context manager for non-FastAPI use (scripts, agents, CLI)
 - `lru_cache` on engine and factory — singleton per process, clearable in tests
+- `close_database` — the lifespan's shutdown closes the pool through it (see `fastapi-service`)
+- With OpenTelemetry, instrument the engine itself: `SQLAlchemyInstrumentor().instrument(engine=async_engine().sync_engine)`. A bare `instrument()` patches `create_async_engine` after this module has imported it, so no query span is recorded
 
 ## Dependency lifetime
 
@@ -176,3 +187,10 @@ class BaseFilter(Filter):
 - Install as `fastapi-filter[sqlalchemy]`; the extra keeps SQLAlchemy below 2.1, the range the library supports
 - If ty reports the nested `Constants` class as an invalid attribute override, upgrade ty (fixed in 0.0.103) instead of adding an ignore
 - `order_by: list[str] | None = Field(default=['-created_at'])`, not a bare list default: ruff cannot see that the class is a Pydantic model and reports `RUF012`. `search_model_fields` is a plain class attribute the library types as `list[str]`, so it keeps a `# noqa: RUF012`
+
+## Migration environment
+
+`migrations/env.py` builds its own synchronous engine from `DatabaseSettings()`:
+
+- Pass `engine_from_config` the same `connect_args={'connect_timeout': database.connect_timeout_seconds}`, or a migration against an unreachable host waits psycopg's 130-second default
+- Pass `compare_server_default=True` to `context.configure()`: autogenerate ignores server-default changes otherwise, and Alembic never reads it from `alembic.ini`

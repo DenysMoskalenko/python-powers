@@ -218,6 +218,23 @@ def override_app_test_dependencies(app: FastAPI) -> None:
 
 Calling session methods such as `execute()` without the `session` fixture raises an `AttributeError` naming the sentinel. Merely injecting the dependency does not fail.
 
+## Test Settings
+
+Tests read `dist.env`, never a developer's `.env`. Point every direct subclass of `_EnvSettings` at it in `pytest_configure` (`__subclasses__()` lists no deeper ones); each holds its own copy of `model_config`, so setting it on `_EnvSettings` alone changes nothing:
+
+```python
+from pathlib import Path
+
+import pytest
+
+from app.core.config import _EnvSettings
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    for settings_class in _EnvSettings.__subclasses__():
+        settings_class.model_config['env_file'] = Path(__file__).resolve().parent.parent / 'dist.env'
+```
+
 ## App and Client Fixtures
 
 This example uses a database. For slim and agent-only services, omit the `_engine` parameter and the database override (`override_app_test_dependencies` above).
@@ -265,6 +282,7 @@ These mean the test strategy is wrong. Stop and reconsider:
 | Share mutable state across tests via module-level fixtures | Fixtures must be function-scoped or produce fresh state |
 | Call a real LLM from a test | Block with `ALLOW_MODEL_REQUESTS = False`; see `ai-agents` |
 | Write `test_stuff()` without `test_success` / `test_fail_<reason>` | Rename — the test name is documentation |
+| `await asyncio.sleep(...)` until another task reaches a point, such as a query started or cancelled | Have the fake set an `asyncio.Event` there and await it; a wall-clock wait is slow and flaky under load |
 
 ## Gotchas
 
@@ -275,3 +293,4 @@ These mean the test strategy is wrong. Stop and reconsider:
 - Two factory builds can draw the same value for a unique column and fail with a unique violation once in many runs; a test that creates several rows passes distinct values for the unique fields (`create_test_author(session, first_name='Jane')`)
 - Rows created in one test share `created_at` and `updated_at`: PostgreSQL `now()` is the transaction start and the whole test is one transaction. Do not assert an order or "updated later" from them; sort by another field or compare as sets
 - `freezegun` moves Python's clock only; a `server_default=func.now()` column still gets the database time
+- In an async test write `freeze_time(..., real_asyncio=True)`: without it the event loop's clock freezes too, and an `asyncio.sleep()` or `asyncio.timeout()` in the code under test never expires
