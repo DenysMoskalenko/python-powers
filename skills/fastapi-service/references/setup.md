@@ -8,7 +8,7 @@ Examples use `app/` as the top-level package — substitute your package name if
 
 - `pydantic-settings` configuration (`Settings` + `lru_cache`d `get_settings`)
 - `setup_routers()` — includes the module routers into the app
-- `create_app()` — the app factory, and its `lifespan`
+- `create_app()` — the app factory, the global request body limit, and the `lifespan`
 - Health checks — liveness and the database readiness probe
 
 ## Configuration
@@ -77,17 +77,26 @@ def setup_routers(app: FastAPI) -> None:
 
 ## App Factory
 
-`create_app()` wires the routers and registers exception handlers (their order relative to routers and middleware does not matter):
+`create_app()` sets the global request body limit, wires the routers, and registers exception handlers (their order relative to routers and middleware does not matter):
 
 ```python
 def create_app() -> FastAPI:
     settings = get_settings()
-    _app = FastAPI(title=settings.PROJECT_NAME, version=settings.PROJECT_VERSION, lifespan=lifespan)
+    _app = FastAPI(
+        title=settings.PROJECT_NAME,
+        version=settings.PROJECT_VERSION,
+        max_body_size=1 * 1024 * 1024,
+        lifespan=lifespan,
+    )
     setup_routers(_app)
     add_pagination(_app)
     include_exception_handlers(_app)
     return _app
 ```
+
+- Every app sets `max_body_size` (bytes): FastAPI reads a body of any size by default; with the limit, a larger one answers 413
+- A route that needs more sets its own — `APIRouter(max_body_size=...)`, `include_router(..., max_body_size=...)`, or the path operation; the app's limit stays small
+- Middleware that reads the body runs under the app's limit, whatever the route allows — the one case where the app's limit rises to fit the uploads and every other router sets the small one
 
 `lifespan` builds every `lru_cache`d client at startup and closes them all at shutdown, from a `finally`, so a startup that fails halfway still closes what it built:
 

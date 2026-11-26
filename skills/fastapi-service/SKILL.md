@@ -7,7 +7,7 @@ description: Use when adding or changing a FastAPI endpoint (`routes.py`, `servi
 
 Patterns for building FastAPI services where services own business logic directly. No repository layer — keep it simple.
 
-> Requires Python 3.14+, FastAPI 0.157+, Pydantic, pydantic-settings.
+> Requires Python 3.14+, FastAPI 0.164+, Pydantic, pydantic-settings.
 > Examples use `app/` as the top-level package. Substitute your package name if different.
 
 **Related**: `python-code-style`, `python-testing`, `postgres-database`, `ai-agents`, `project-scaffolding`.
@@ -191,7 +191,7 @@ Register handlers in `create_app()`; their order relative to routers and middlew
 
 ## Setup
 
-See `references/setup.md` for one-time project wiring: `pydantic-settings` configuration (`Settings` + `lru_cache`d `get_settings`), `setup_routers()` (business modules under `/v1`, operational endpoints unversioned), the `create_app()` factory and its `lifespan`, and the health checks.
+See `references/setup.md` for one-time project wiring: `pydantic-settings` configuration (`Settings` + `lru_cache`d `get_settings`), `setup_routers()` (business modules under `/v1`, operational endpoints unversioned), the `create_app()` factory, which sets the global `max_body_size`, and its `lifespan`, and the health checks.
 
 ## Red Flags — STOP
 
@@ -207,6 +207,7 @@ These mean the service boundary is drifting. Stop and apply the named rule:
 | Put request/response schemas outside their module | Schemas — colocate schemas in the module's `schemas.py` |
 | Hand-write `sort_by` / `sort_order` params or a filters schema for a database-backed list | Schemas — take the module's `fastapi-filter` class through `FilterDepends` |
 | Return ORM models without a response schema | Schemas — response models use `ConfigDict(from_attributes=True)` |
+| Create the app without `max_body_size`, or raise the app's limit so one route can take uploads | Setup — the app factory sets a small global limit; the upload router or route sets its own |
 | Nest routers through an intermediate `APIRouter` | Setup — include every module router into the app directly |
 | Add an integration's fields to the root `Settings`, or declare a password, token, or API key as `str` | Setup — one settings class per integration with its own `env_prefix`, inheriting `_EnvSettings`; every secret is `SecretStr` |
 | Check a provider or auth server that only some routes call (OpenAI, Bedrock, Keycloak) in `/health/ready` | Setup — readiness checks only what every request needs, the database through the request's `get_session`; a provider outage would take every pod out of traffic, routes that never call it included |
