@@ -85,8 +85,7 @@ def create_app() -> FastAPI:
     _app = FastAPI(
         title=settings.PROJECT_NAME,
         version=settings.PROJECT_VERSION,
-        # Bounds the memory one request can take; an upload router or route sets its own `max_body_size`.
-        max_body_size=1024 * 1024,
+        max_body_size=1 * 1024 * 1024,
         lifespan=lifespan,
     )
     setup_routers(_app)
