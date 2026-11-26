@@ -113,8 +113,8 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
 
 
 async def startup(settings: Settings) -> None:
-    # FastAPI resolves sync dependencies in threads, where concurrent first requests would each build a client.
     async_session_factory()
+    # FastAPI resolves sync dependencies in threads, where concurrent first requests would each build a client.
     get_openai_client(settings=settings)
 
 
@@ -130,63 +130,22 @@ Call a cached dependency by keyword outside FastAPI too: FastAPI calls dependenc
 
 `app/domains/health_checks/` serves two unversioned routes. `/health/live` answers a static `UP`. `/health/ready` checks only what every request needs: the database. Never check a provider or auth server that only some routes call (OpenAI, Bedrock, Keycloak): its outage would take all pods out of traffic at once, the routes that never call it included. A service without a database answers a static `READY`.
 
-The readiness route takes `session_factory: Annotated[async_sessionmaker[AsyncSession], Depends(async_session_factory)]`, documents its 503 with `responses={status.HTTP_503_SERVICE_UNAVAILABLE: {'model': HealthCheckReadyResponse}}`, and sets `response.status_code` to 503 when the probe returns `DOWN`.
-
-The probe in the module's `service.py` opens its own session from that factory, not the request's `get_session`: a probe cut off at its deadline keeps running after the request ends. It counts only `SQLAlchemyError` and `OSError` as `DOWN`; any other exception is a bug in the probe and should answer 500.
+The readiness route takes `session: Annotated[AsyncSession, Depends(get_session, scope='function')]`, documents its 503 with `responses={status.HTTP_503_SERVICE_UNAVAILABLE: {'model': HealthCheckReadyResponse}}`, and sets `response.status_code` to 503 when the probe in the module's `service.py` returns `DOWN`:
 
 ```python
-import asyncio
-import logging
-
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
-
-from app.domains.health_checks.schemas import LivenessStatus
-
-_logger = logging.getLogger(__name__)
-# asyncio holds tasks weakly: a probe cut off at its deadline stays here until its cancellation has finished.
-_abandoned_probes: set[asyncio.Task[None]] = set()
-
-
-async def check_database_status(
-    session_factory: async_sessionmaker[AsyncSession], timeout_seconds: float
-) -> LivenessStatus:
-    # Not awaited or shielded: psycopg's cancel overruns the deadline, and shield logs late failures as tracebacks.
-    probe = asyncio.create_task(_select_one(session_factory))
-    try:
-        await asyncio.wait([probe], timeout=timeout_seconds)
-    except asyncio.CancelledError:
-        _abandon(probe)
-        raise
+async def check_database_status(session: AsyncSession, timeout_seconds: float) -> LivenessStatus:
     # One line without a traceback, newlines escaped by %r: the kubelet probes every few seconds.
-    if not probe.done():
-        _abandon(probe)
-        _logger.warning('Readiness check: the database did not answer within %ss', timeout_seconds)
-        return 'DOWN'
     try:
-        probe.result()
+        async with asyncio.timeout(timeout_seconds):
+            await session.execute(text('SELECT 1'))
+    except TimeoutError:  # before OSError, its base class
+        _logger.warning('Readiness check: the database did not answer within %ss', timeout_seconds)
     except (SQLAlchemyError, OSError) as exc:
         _logger.warning('Readiness check: the database is down: %s: %r', type(exc).__name__, str(exc))
-        return 'DOWN'
-    return 'UP'
-
-
-def _abandon(probe: asyncio.Task[None]) -> None:
-    probe.cancel()
-    _abandoned_probes.add(probe)
-    probe.add_done_callback(_forget)
-
-
-def _forget(probe: asyncio.Task[None]) -> None:
-    _abandoned_probes.discard(probe)
-    if not probe.cancelled():
-        probe.exception()  # a query failing as it cancels must not log a traceback after its one-line DOWN
-
-
-async def _select_one(session_factory: async_sessionmaker[AsyncSession]) -> None:
-    async with session_factory() as session:
-        await session.execute(text('SELECT 1'))
+    else:
+        return 'UP'
+    await session.rollback()  # the probe returns instead of raising, so get_session would otherwise commit
+    return 'DOWN'
 ```
 
-With OpenTelemetry, run the query inside `suppress_instrumentation()` (`opentelemetry.instrumentation.utils`) so probes record no spans.
+A missed deadline or a `SQLAlchemyError` / `OSError` answers `DOWN`; any other exception is a bug in the probe and should answer 500. The deadline is not a hard bound: on a server that stops answering, psycopg's cancel holds a probe past it. With OpenTelemetry, run the query inside `suppress_instrumentation()` (`opentelemetry.instrumentation.utils`) so probes record no spans.

@@ -282,7 +282,6 @@ These mean the test strategy is wrong. Stop and reconsider:
 | Share mutable state across tests via module-level fixtures | Fixtures must be function-scoped or produce fresh state |
 | Call a real LLM from a test | Block with `ALLOW_MODEL_REQUESTS = False`; see `ai-agents` |
 | Write `test_stuff()` without `test_success` / `test_fail_<reason>` | Rename — the test name is documentation |
-| `await asyncio.sleep(...)` until another task reaches a point, such as a query started or cancelled | Have the fake set an `asyncio.Event` there and await it; a wall-clock wait is slow and flaky under load |
 
 ## Gotchas
 
