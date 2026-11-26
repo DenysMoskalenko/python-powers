@@ -237,7 +237,7 @@ Always generate with Alembic autogenerate:
 make migration MSG="add authors"
 ```
 
-Never hand-write migration files. Ensure `migrations/env.py` imports all models so metadata is complete. Read the URL from `DatabaseSettings()` there, not `get_settings()`, so a migration job needs only database secrets; never put it in the Alembic `Config`, where a `%` from a percent-encoded password raises `invalid interpolation syntax` and the error prints the URL. Always review the generated `upgrade()` and `downgrade()` operations before applying them; correct renames, operation ordering, and required data changes as needed.
+Never hand-write migration files. Ensure `migrations/env.py` imports all models so metadata is complete and sets the options listed in `references/setup.md`. Read the URL from `DatabaseSettings()` there, not `get_settings()`, so a migration job needs only database secrets; never put it in the Alembic `Config`, where a `%` from a percent-encoded password raises `invalid interpolation syntax` and the error prints the URL. Always review the generated `upgrade()` and `downgrade()` operations before applying them; correct renames, operation ordering, and required data changes as needed.
 
 ## Testing
 
